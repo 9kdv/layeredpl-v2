@@ -2,119 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Layered.pl Design System
-   Minimalist, modern e-commerce for 3D printed products
-   Colors: White, Black, Purple accents
-   Style: Clean, premium, tech-forward
-*/
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @layer base {
   :root {
-    /* Core Colors - Light Mode */
-    --background: 0 0% 100%;
-    --foreground: 0 0% 5%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 5%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 5%;
-
-    /* Purple Accent - Primary */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 100%;
     --primary: 262 83% 58%;
     --primary-foreground: 0 0% 100%;
-
-    /* Secondary - Light Gray */
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 15%;
-
-    /* Muted */
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
-
-    /* Accent - Subtle Purple */
-    --accent: 262 83% 95%;
-    --accent-foreground: 262 83% 45%;
-
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 262 50% 20%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
     --ring: 262 83% 58%;
-
-    --radius: 0.5rem;
-
-    /* Custom tokens */
-    --gradient-hero: linear-gradient(135deg, hsl(262 83% 58% / 0.1) 0%, transparent 50%);
-    --shadow-soft: 0 2px 8px hsl(0 0% 0% / 0.04);
-    --shadow-medium: 0 4px 16px hsl(0 0% 0% / 0.08);
-    --shadow-strong: 0 8px 32px hsl(0 0% 0% / 0.12);
-    --shadow-glow: 0 0 24px hsl(262 83% 58% / 0.25);
-
-    /* Sidebar */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 0 0% 15%;
+    --radius: 0.25rem;
+    --sidebar-background: 0 0% 3%;
+    --sidebar-foreground: 0 0% 90%;
     --sidebar-primary: 262 83% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 262 83% 95%;
-    --sidebar-accent-foreground: 262 83% 45%;
-    --sidebar-border: 0 0% 90%;
-    --sidebar-ring: 262 83% 58%;
-  }
-
-  .dark {
-    /* Core Colors - Dark Mode */
-    --background: 0 0% 5%;
-    --foreground: 0 0% 98%;
-
-    --card: 0 0% 8%;
-    --card-foreground: 0 0% 98%;
-
-    --popover: 0 0% 8%;
-    --popover-foreground: 0 0% 98%;
-
-    /* Purple Accent - Primary (slightly lighter for dark mode) */
-    --primary: 262 83% 65%;
-    --primary-foreground: 0 0% 100%;
-
-    /* Secondary - Dark Gray */
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 90%;
-
-    /* Muted */
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 55%;
-
-    /* Accent - Subtle Purple */
-    --accent: 262 50% 15%;
-    --accent-foreground: 262 83% 75%;
-
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 262 83% 65%;
-
-    /* Custom tokens - Dark */
-    --gradient-hero: linear-gradient(135deg, hsl(262 83% 58% / 0.15) 0%, transparent 50%);
-    --shadow-soft: 0 2px 8px hsl(0 0% 0% / 0.3);
-    --shadow-medium: 0 4px 16px hsl(0 0% 0% / 0.4);
-    --shadow-strong: 0 8px 32px hsl(0 0% 0% / 0.5);
-    --shadow-glow: 0 0 32px hsl(262 83% 58% / 0.35);
-
-    /* Sidebar - Dark */
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 262 83% 65%;
-    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 262 50% 15%;
-    --sidebar-accent-foreground: 262 83% 75%;
-    --sidebar-border: 0 0% 18%;
-    --sidebar-ring: 262 83% 65%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 15%;
+    --sidebar-ring: 262 83% 58%;
   }
 }
 
@@ -122,190 +41,42 @@
   * {
     @apply border-border;
   }
-
   html {
     scroll-behavior: smooth;
   }
-
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
-  }
-
-  h1, h2, h3, h4, h5, h6 {
     font-family: 'Space Grotesk', system-ui, sans-serif;
-    @apply font-semibold tracking-tight;
   }
 }
 
 @layer components {
-  /* Hero Button Variant */
-  .btn-hero {
-    @apply bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-4 text-lg font-medium rounded-lg transition-all duration-300;
-    box-shadow: var(--shadow-medium);
-  }
-
-  .btn-hero:hover {
-    box-shadow: var(--shadow-glow);
-    transform: translateY(-2px);
-  }
-
-  /* Outline Button */
-  .btn-outline-hero {
-    @apply border-2 border-foreground/20 text-foreground hover:border-primary hover:text-primary px-8 py-4 text-lg font-medium rounded-lg transition-all duration-300;
-  }
-
-  /* Card Hover Effect */
-  .card-hover {
-    @apply transition-all duration-300;
-    box-shadow: var(--shadow-soft);
-  }
-
-  .card-hover:hover {
-    box-shadow: var(--shadow-medium);
-    transform: translateY(-4px);
-  }
-
-  /* Glass Effect */
-  .glass {
-    @apply bg-background/80 backdrop-blur-lg border border-border/50;
-  }
-
-  /* Section Container */
   .section-container {
-    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
-  }
-
-  /* Section Padding */
-  .section-padding {
-    @apply py-16 md:py-24 lg:py-32;
-  }
-
-  /* Gradient Text */
-  .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70;
-  }
-
-  /* Product Grid */
-  .product-grid {
-    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6;
-  }
-
-  /* Link Underline Animation */
-  .link-underline {
-    @apply relative;
-  }
-
-  .link-underline::after {
-    content: '';
-    @apply absolute bottom-0 left-0 w-full h-0.5 bg-primary scale-x-0 origin-right transition-transform duration-300;
-  }
-
-  .link-underline:hover::after {
-    @apply scale-x-100 origin-left;
-  }
-
-  /* Badge Styles */
-  .badge-available {
-    @apply bg-green-500/10 text-green-600 dark:text-green-400;
-  }
-
-  .badge-unavailable {
-    @apply bg-destructive/10 text-destructive;
-  }
-
-  .badge-preorder {
-    @apply bg-primary/10 text-primary;
+    @apply max-w-7xl mx-auto px-6;
   }
 }
 
 @layer utilities {
-  /* Fade In Animation */
   .animate-fade-in {
-    animation: fadeIn 0.5s ease-out forwards;
+    animation: fadeIn 0.8s ease-out forwards;
   }
-
-  .animate-fade-in-up {
-    animation: fadeInUp 0.6s ease-out forwards;
-  }
-
-  .animate-fade-in-delay-1 {
-    animation: fadeIn 0.5s ease-out 0.1s forwards;
+  .animate-fade-in-delay {
+    animation: fadeIn 0.8s ease-out 0.3s forwards;
     opacity: 0;
-  }
-
-  .animate-fade-in-delay-2 {
-    animation: fadeIn 0.5s ease-out 0.2s forwards;
-    opacity: 0;
-  }
-
-  .animate-fade-in-delay-3 {
-    animation: fadeIn 0.5s ease-out 0.3s forwards;
-    opacity: 0;
-  }
-
-  /* Stagger Children */
-  .stagger-children > * {
-    opacity: 0;
-    animation: fadeInUp 0.5s ease-out forwards;
-  }
-
-  .stagger-children > *:nth-child(1) { animation-delay: 0.1s; }
-  .stagger-children > *:nth-child(2) { animation-delay: 0.2s; }
-  .stagger-children > *:nth-child(3) { animation-delay: 0.3s; }
-  .stagger-children > *:nth-child(4) { animation-delay: 0.4s; }
-  .stagger-children > *:nth-child(5) { animation-delay: 0.5s; }
-  .stagger-children > *:nth-child(6) { animation-delay: 0.6s; }
-
-  /* Pulse Glow */
-  .pulse-glow {
-    animation: pulseGlow 2s ease-in-out infinite;
   }
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulseGlow {
-  0%, 100% {
-    box-shadow: 0 0 24px hsl(262 83% 58% / 0.2);
-  }
-  50% {
-    box-shadow: 0 0 32px hsl(262 83% 58% / 0.4);
-  }
-}
-
-/* Scrollbar Styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 4px;
 }
-
 ::-webkit-scrollbar-track {
-  @apply bg-muted;
+  @apply bg-background;
 }
-
 ::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/30 rounded-full;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/50;
 }
