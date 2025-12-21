@@ -12,17 +12,13 @@ export default function HomePage() {
       {/* Hero - Fullscreen */}
       <section className="relative h-screen flex items-center justify-center">
         <div className="absolute inset-0 z-0">
-          <img
-            src={heroDark}
-            alt="Layered"
-            className="w-full h-full object-cover"
-          />
+          <video src="majster.mov" autoPlay className='w-full h-full object-cover' loop playsInline muted></video>
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
         </div>
         
         <div className="relative z-10 text-center animate-fade-in">
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-4">
-            SPRAWDŹ PRODUKTY
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 italic">
+            KUP TERAZ
           </h1>
         </div>
 
