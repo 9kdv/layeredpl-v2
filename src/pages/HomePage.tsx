@@ -22,11 +22,8 @@ export default function HomePage() {
         
         <div className="relative z-10 text-center animate-fade-in">
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-4">
-            KUP TERAZ
+            SPRAWDŹ PRODUKTY
           </h1>
-          <p className="text-lg text-muted-foreground animate-fade-in-delay">
-            Nowa kolekcja
-          </p>
         </div>
 
         <Link 
