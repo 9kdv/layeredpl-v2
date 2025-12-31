@@ -64,11 +64,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen pt-40 pb-20 flex flex-col items-center bg-background px-4 text-foreground">
-      <Link to="/" className="mb-8">
-        <span className="text-2xl font-light tracking-widest">LAYERED</span>
-      </Link>
-      
+    <main className="min-h-screen pt-28 pb-20 flex flex-col items-center bg-background px-4 text-foreground">
       <div className="w-full max-w-[440px] [perspective:1200px]">
         
         <div 
@@ -80,7 +76,6 @@ export default function LoginPage() {
           <div className="w-full bg-card border border-border rounded-[2.5rem] p-8 md:p-10 shadow-xl [backface-visibility:hidden]">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold tracking-tight mb-2">Witaj</h1>
-              <p className="text-muted-foreground text-sm">Zaloguj się do layered.pl</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-5">
