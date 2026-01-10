@@ -1,5 +1,5 @@
-// const API_BASE = '/api';
-const API_BASE = 'http://localhost:3001';
+// Use /api for production (nginx proxy), localhost for development
+const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3001';
 
 interface ApiOptions {
   method?: string;
@@ -88,10 +88,14 @@ class ApiService {
   // Products
   async getProducts(category?: string, search?: string) {
     const params = new URLSearchParams();
-    if (category && category !== 'all') params.set('category', category);
+    if (category && category !== 'all' && category !== 'Wszystkie') params.set('category', category);
     if (search) params.set('search', search);
     const query = params.toString();
     return this.request<Product[]>(`/products${query ? `?${query}` : ''}`);
+  }
+
+  async getFeaturedProducts() {
+    return this.request<Product[]>('/products?featured=true');
   }
 
   async getProduct(id: string) {
@@ -144,10 +148,22 @@ class ApiService {
     return this.request<{ publishableKey: string }>('/checkout/config');
   }
 
-  async createPaymentIntent(items: CartItem[], shippingAddress?: ShippingAddress, customerEmail?: string) {
+  async createPaymentIntent(
+    items: CartItem[], 
+    shippingAddress: ShippingAddress, 
+    customerEmail: string,
+    customerName?: string,
+    customerPhone?: string
+  ) {
     return this.request<{ clientSecret: string; orderId: string }>('/checkout/create-payment-intent', {
       method: 'POST',
-      body: { items, shipping_address: shippingAddress, customer_email: customerEmail },
+      body: { 
+        items, 
+        shipping_address: shippingAddress, 
+        customer_email: customerEmail,
+        customer_name: customerName,
+        customer_phone: customerPhone
+      },
     });
   }
 
@@ -169,11 +185,13 @@ export interface Product {
   id: string;
   name: string;
   description: string;
+  long_description?: string;
   price: number;
   category: string;
   availability: 'available' | 'low_stock' | 'unavailable';
   images: string[];
-  specifications: Record<string, string>;
+  specifications: { label: string; value: string }[];
+  featured?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -203,6 +221,8 @@ export interface Order {
   payment_intent_id?: string;
   shipping_address: ShippingAddress;
   customer_email: string;
+  customer_name?: string;
+  customer_phone?: string;
   created_at: string;
 }
 
