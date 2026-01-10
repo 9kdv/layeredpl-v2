@@ -21,6 +21,7 @@ import CookiesPage from "./pages/CookiesPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
+import CheckoutPage from "./pages/CheckoutPage";
 
 import favicon from "/favicon.svg";
 
@@ -105,6 +106,7 @@ const PageWrapper = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/produkt/:id" element={<ProductPage />} />
+        <Route path="/zamowienie" element={<CheckoutPage />} />
         <Route path="/kontakt" element={<ContactPage />} />
         <Route path="/regulamin" element={<TermsPage />} />
         <Route path="/prywatnosc" element={<PrivacyPage />} />
