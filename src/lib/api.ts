@@ -132,6 +132,10 @@ class ApiService {
     return this.request<Order[]>('/orders');
   }
 
+  async getUserOrders() {
+    return this.request<Order[]>('/orders/my');
+  }
+
   async getOrder(id: string) {
     return this.request<Order>(`/orders/${id}`);
   }
@@ -140,6 +144,21 @@ class ApiService {
     return this.request<{ success: boolean }>(`/orders/${id}/status`, {
       method: 'PUT',
       body: { status },
+    });
+  }
+
+  // User
+  async changePassword(currentPassword: string, newPassword: string) {
+    return this.request<{ success: boolean }>('/auth/change-password', {
+      method: 'POST',
+      body: { currentPassword, newPassword },
+    });
+  }
+
+  async requestPasswordReset(email: string) {
+    return this.request<{ success: boolean }>('/auth/request-reset', {
+      method: 'POST',
+      body: { email },
     });
   }
 

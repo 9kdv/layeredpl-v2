@@ -201,15 +201,25 @@ export default function AdminPage() {
     cancelled: 'Anulowane',
   };
 
+  const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3001';
+
+  const getImageUrl = (imagePath: string) => {
+    if (imagePath.startsWith('http')) return imagePath;
+    return `${API_BASE}${imagePath}`;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="text-xl font-light tracking-widest">LAYERED</Link>
+          <Link to="/" className="flex items-center gap-3">
+            <img src="/favicon.svg" alt="layered.pl" className="w-8 h-8" />
+            <span className="text-xl font-bold tracking-tighter uppercase">layered.pl</span>
+          </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">{user?.email}</span>
-            <Button variant="ghost" size="icon" onClick={handleLogout}>
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-xl">
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -309,12 +319,12 @@ export default function AdminPage() {
                       <td className="px-4 py-3">
                         {product.images[0] ? (
                           <img 
-                            src={product.images[0]} 
+                            src={getImageUrl(product.images[0])} 
                             alt={product.name}
-                            className="w-12 h-12 object-cover rounded"
+                            className="w-12 h-12 object-cover rounded-xl"
                           />
                         ) : (
-                          <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
+                          <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center">
                             <Package className="h-4 w-4 text-muted-foreground" />
                           </div>
                         )}
