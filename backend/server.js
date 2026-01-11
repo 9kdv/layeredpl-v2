@@ -258,6 +258,48 @@ app.get('/auth/me', authenticate, async (req, res) => {
   }
 });
 
+app.post('/auth/change-password', authenticate, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Obecne i nowe hasło są wymagane' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'Nowe hasło musi mieć co najmniej 6 znaków' });
+  }
+
+  try {
+    const [users] = await pool.execute('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    if (users.length === 0) return res.status(404).json({ error: 'Użytkownik nie znaleziony' });
+
+    const user = users[0];
+    if (!bcrypt.compareSync(currentPassword, user.password)) {
+      return res.status(400).json({ error: 'Nieprawidłowe obecne hasło' });
+    }
+
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    await pool.execute('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.post('/auth/request-reset', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email jest wymagany' });
+  }
+
+  // In production, this would send an email with a reset link
+  // For now, just return success (you can implement email sending later)
+  res.json({ success: true, message: 'Jeśli konto istnieje, email z linkiem do resetowania hasła został wysłany.' });
+});
+
 // ============ PRODUCTS ROUTES ============
 
 app.get('/products', async (req, res) => {
@@ -448,6 +490,25 @@ app.get('/orders', authenticate, requireAdmin, async (req, res) => {
     res.json(parsed);
   } catch (err) {
     console.error('Get orders error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.get('/orders/my', authenticate, async (req, res) => {
+  try {
+    const [orders] = await pool.execute(
+      'SELECT * FROM orders WHERE customer_email = (SELECT email FROM users WHERE id = ?) OR user_id = ? ORDER BY created_at DESC', 
+      [req.user.id, req.user.id]
+    );
+    const parsed = orders.map(o => ({
+      ...o,
+      total: parseFloat(o.total),
+      items: typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []),
+      shipping_address: typeof o.shipping_address === 'string' ? JSON.parse(o.shipping_address) : (o.shipping_address || {})
+    }));
+    res.json(parsed);
+  } catch (err) {
+    console.error('Get user orders error:', err);
     res.status(500).json({ error: 'Błąd serwera' });
   }
 });

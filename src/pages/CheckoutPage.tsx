@@ -46,7 +46,7 @@ function CheckoutForm({
     setIsProcessing(true);
     setErrorMessage(null);
 
-    const { error } = await stripe.confirmPayment({
+    const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
         return_url: `${window.location.origin}/zamowienie-sukces`,

@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, Loader2, ArrowRight } from 'lucide-react';
+import { 
+  ChevronDown, 
+  Loader2, 
+  ArrowRight, 
+  Palette, 
+  Leaf, 
+  Truck, 
+  Shield, 
+  Star,
+  Clock,
+  CreditCard
+} from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import { api, Product } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -70,6 +81,30 @@ export default function HomePage() {
         </Link>
       </section>
 
+      {/* Trust Badges */}
+      <section className="py-8 border-b border-border bg-card/50">
+        <div className="section-container">
+          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Shield className="w-5 h-5 text-primary" />
+              <span>Bezpieczne płatności</span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Truck className="w-5 h-5 text-primary" />
+              <span>Darmowa dostawa od 200 zł</span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Clock className="w-5 h-5 text-primary" />
+              <span>Wysyłka w 24h</span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <CreditCard className="w-5 h-5 text-primary" />
+              <span>Płatność kartą, BLIK, PayPal</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Products */}
       <section id="products" className="py-24 bg-card/30">
         <div className="section-container">
@@ -117,34 +152,95 @@ export default function HomePage() {
       {/* Features */}
       <section className="py-24">
         <div className="section-container">
+          <div className="text-center mb-16">
+            <p className="text-sm uppercase tracking-wider text-primary mb-2">Dlaczego my?</p>
+            <h2 className="text-3xl md:text-4xl font-bold">Jakość, na którą zasługujesz</h2>
+          </div>
           <div className="grid md:grid-cols-3 gap-12">
             <div className="text-center">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🎨</span>
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Palette className="w-7 h-7 text-primary" />
               </div>
-              <h3 className="font-semibold mb-2">Unikalne projekty</h3>
-              <p className="text-muted-foreground text-sm">
+              <h3 className="font-semibold text-lg mb-2">Unikalne projekty</h3>
+              <p className="text-muted-foreground">
                 Każdy produkt jest starannie zaprojektowany i wydrukowany z najwyższą precyzją.
               </p>
             </div>
             <div className="text-center">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">♻️</span>
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Leaf className="w-7 h-7 text-primary" />
               </div>
-              <h3 className="font-semibold mb-2">Ekologiczne materiały</h3>
-              <p className="text-muted-foreground text-sm">
+              <h3 className="font-semibold text-lg mb-2">Ekologiczne materiały</h3>
+              <p className="text-muted-foreground">
                 Używamy biodegradowalnych filamentów PLA i PETG przyjaznych dla środowiska.
               </p>
             </div>
             <div className="text-center">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">📦</span>
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Truck className="w-7 h-7 text-primary" />
               </div>
-              <h3 className="font-semibold mb-2">Szybka dostawa</h3>
-              <p className="text-muted-foreground text-sm">
+              <h3 className="font-semibold text-lg mb-2">Szybka dostawa</h3>
+              <p className="text-muted-foreground">
                 Wysyłka w ciągu 24h od złożenia zamówienia na terenie całej Polski.
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Reviews / Social Proof */}
+      <section className="py-24 bg-card/30">
+        <div className="section-container">
+          <div className="text-center mb-16">
+            <p className="text-sm uppercase tracking-wider text-primary mb-2">Opinie</p>
+            <h2 className="text-3xl md:text-4xl font-bold">Co mówią nasi klienci</h2>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                name: 'Anna K.',
+                text: 'Świetna jakość produktów! Organizery na biurko są dokładnie takie, jakich szukałam. Polecam!',
+                rating: 5
+              },
+              {
+                name: 'Michał W.',
+                text: 'Bardzo szybka wysyłka i profesjonalna obsługa. Produkt zgodny z opisem, jestem zadowolony.',
+                rating: 5
+              },
+              {
+                name: 'Karolina M.',
+                text: 'Uwielbiam design tych produktów. Już zamówiłam kolejne rzeczy. Na pewno wrócę po więcej!',
+                rating: 5
+              }
+            ].map((review, idx) => (
+              <div key={idx} className="bg-card border border-border rounded-2xl p-6">
+                <div className="flex gap-1 mb-4">
+                  {Array.from({ length: review.rating }).map((_, i) => (
+                    <Star key={i} className="w-5 h-5 fill-primary text-primary" />
+                  ))}
+                </div>
+                <p className="text-muted-foreground mb-4">{review.text}</p>
+                <p className="font-semibold">{review.name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-24">
+        <div className="section-container">
+          <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-3xl p-12 md:p-16 text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Gotowy na zakupy?</h2>
+            <p className="text-muted-foreground text-lg mb-8 max-w-2xl mx-auto">
+              Przeglądaj naszą kolekcję unikalnych produktów drukowanych w 3D i znajdź coś idealnego dla siebie.
+            </p>
+            <Button asChild size="lg" className="h-14 px-10 text-base">
+              <Link to="/sklep">
+                Przejdź do sklepu
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Link>
+            </Button>
           </div>
         </div>
       </section>

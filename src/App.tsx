@@ -22,6 +22,9 @@ import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import AdminPage from "./pages/AdminPage";
 import CheckoutPage from "./pages/CheckoutPage";
+import OrderSuccessPage from "./pages/OrderSuccessPage";
+import AccountPage from "./pages/AccountPage";
+import OrderDetailsPage from "./pages/OrderDetailsPage";
 
 import favicon from "/favicon.svg";
 
@@ -104,9 +107,12 @@ const PageWrapper = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/sklep" element={<ShopPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/konto" element={<AccountPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/produkt/:id" element={<ProductPage />} />
         <Route path="/zamowienie" element={<CheckoutPage />} />
+        <Route path="/zamowienie-sukces" element={<OrderSuccessPage />} />
+        <Route path="/zamowienie/:id" element={<OrderDetailsPage />} />
         <Route path="/kontakt" element={<ContactPage />} />
         <Route path="/regulamin" element={<TermsPage />} />
         <Route path="/prywatnosc" element={<PrivacyPage />} />
