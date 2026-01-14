@@ -172,7 +172,8 @@ class ApiService {
     shippingAddress: ShippingAddress, 
     customerEmail: string,
     customerName?: string,
-    customerPhone?: string
+    customerPhone?: string,
+    shippingCost?: number
   ) {
     return this.request<{ clientSecret: string; orderId: string }>('/checkout/create-payment-intent', {
       method: 'POST',
@@ -181,9 +182,15 @@ class ApiService {
         shipping_address: shippingAddress, 
         customer_email: customerEmail,
         customer_name: customerName,
-        customer_phone: customerPhone
+        customer_phone: customerPhone,
+        shipping_cost: shippingCost || 0
       },
     });
+  }
+
+  // InPost
+  async verifyInPostLocker(code: string) {
+    return this.request<{ valid: boolean; address?: string; name?: string }>(`/inpost/verify/${code}`);
   }
 
   // Admin Stats

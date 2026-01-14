@@ -132,28 +132,28 @@ export default function AccountPage() {
       <div className="section-container max-w-5xl">
         <div className="flex flex-col md:flex-row gap-8">
           {/* Sidebar */}
-          <aside className="md:w-64 flex-shrink-0">
-            <div className="bg-card border border-border rounded-2xl p-6 sticky top-24">
-              <div className="flex items-center gap-3 mb-6 pb-6 border-b border-border">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <User className="w-6 h-6 text-primary" />
+          <aside className="md:w-60 flex-shrink-0">
+            <div className="bg-card border border-border rounded-xl p-5 sticky top-24">
+              <div className="flex items-center gap-3 mb-5 pb-5 border-b border-border">
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <User className="w-5 h-5 text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-medium truncate">{user.email}</p>
-                  <p className="text-sm text-muted-foreground">Klient</p>
+                  <p className="font-medium text-sm truncate">{user.email}</p>
+                  <p className="text-xs text-muted-foreground">Klient</p>
                 </div>
               </div>
 
-              <nav className="space-y-2">
+              <nav className="space-y-1">
                 <button
                   onClick={() => setActiveTab('orders')}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors ${
                     activeTab === 'orders' 
                       ? 'bg-primary text-primary-foreground' 
                       : 'hover:bg-muted'
                   }`}
                 >
-                  <span className="flex items-center gap-3">
+                  <span className="flex items-center gap-2">
                     <Package className="w-4 h-4" />
                     Zamówienia
                   </span>
@@ -162,13 +162,13 @@ export default function AccountPage() {
 
                 <button
                   onClick={() => setActiveTab('settings')}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors ${
                     activeTab === 'settings' 
                       ? 'bg-primary text-primary-foreground' 
                       : 'hover:bg-muted'
                   }`}
                 >
-                  <span className="flex items-center gap-3">
+                  <span className="flex items-center gap-2">
                     <Settings className="w-4 h-4" />
                     Ustawienia
                   </span>
@@ -177,7 +177,7 @@ export default function AccountPage() {
 
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-destructive hover:bg-destructive/10 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   Wyloguj się
@@ -197,62 +197,62 @@ export default function AccountPage() {
                     <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : orders.length === 0 ? (
-                  <div className="bg-card border border-border rounded-2xl p-12 text-center">
+                  <div className="bg-card border border-border rounded-xl p-12 text-center">
                     <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="font-medium mb-2">Brak zamówień</h3>
-                    <p className="text-muted-foreground mb-6">Nie masz jeszcze żadnych zamówień.</p>
-                    <Button asChild className="rounded-xl">
+                    <p className="text-muted-foreground text-sm mb-6">Nie masz jeszcze żadnych zamówień.</p>
+                    <Button asChild>
                       <Link to="/sklep">Przejdź do sklepu</Link>
                     </Button>
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {orders.map((order) => (
-                      <div key={order.id} className="bg-card border border-border rounded-2xl p-6">
+                      <div key={order.id} className="bg-card border border-border rounded-xl p-5">
                         <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                           <div>
-                            <p className="text-sm text-muted-foreground mb-1">Zamówienie</p>
-                            <p className="font-mono font-semibold">#{order.id.slice(0, 8).toUpperCase()}</p>
+                            <p className="text-xs text-muted-foreground mb-1">Zamówienie</p>
+                            <p className="font-mono font-medium text-sm">#{order.id.slice(0, 8).toUpperCase()}</p>
                           </div>
-                          <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg">
+                          <div className="flex items-center gap-2 px-2.5 py-1 bg-muted rounded-lg">
                             {getStatusIcon(order.status)}
-                            <span className="text-sm font-medium">{getStatusLabel(order.status)}</span>
+                            <span className="text-xs font-medium">{getStatusLabel(order.status)}</span>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-4 mb-4">
+                        <div className="flex flex-wrap gap-3 mb-4">
                           {order.items.slice(0, 3).map((item, idx) => (
-                            <div key={idx} className="flex items-center gap-3">
+                            <div key={idx} className="flex items-center gap-2">
                               <img 
                                 src={item.image} 
                                 alt={item.name}
-                                className="w-12 h-12 object-cover rounded-lg bg-muted"
+                                className="w-10 h-10 object-cover rounded-lg bg-muted"
                               />
                               <div>
-                                <p className="text-sm font-medium">{item.name}</p>
+                                <p className="text-xs font-medium">{item.name}</p>
                                 <p className="text-xs text-muted-foreground">x{item.quantity}</p>
                               </div>
                             </div>
                           ))}
                           {order.items.length > 3 && (
-                            <div className="flex items-center text-sm text-muted-foreground">
+                            <div className="flex items-center text-xs text-muted-foreground">
                               +{order.items.length - 3} więcej
                             </div>
                           )}
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-border">
-                          <div className="flex gap-6 text-sm">
+                          <div className="flex gap-4 text-xs">
                             <div>
                               <span className="text-muted-foreground">Data:</span>{' '}
                               <span className="font-medium">{new Date(order.created_at).toLocaleDateString('pl-PL')}</span>
                             </div>
                             <div>
                               <span className="text-muted-foreground">Suma:</span>{' '}
-                              <span className="font-semibold">{order.total.toFixed(2)} zł</span>
+                              <span className="font-medium">{order.total.toFixed(2)} zł</span>
                             </div>
                           </div>
-                          <Button variant="outline" size="sm" className="rounded-lg" asChild>
+                          <Button variant="outline" size="sm" asChild>
                             <Link to={`/zamowienie/${order.id}`}>
                               <Eye className="w-4 h-4 mr-2" />
                               Szczegóły
@@ -267,21 +267,21 @@ export default function AccountPage() {
             )}
 
             {activeTab === 'settings' && (
-              <div>
-                <h1 className="text-2xl font-bold mb-6">Ustawienia konta</h1>
+              <div className="space-y-6">
+                <h1 className="text-2xl font-bold">Ustawienia konta</h1>
 
-                <div className="bg-card border border-border rounded-2xl p-6 mb-6">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-6">
+                  <h3 className="font-medium mb-4 flex items-center gap-2 text-sm text-muted-foreground uppercase tracking-wide">
                     <User className="w-4 h-4" />
                     Dane konta
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <Label className="text-muted-foreground">Email</Label>
+                      <Label className="text-muted-foreground text-xs">Email</Label>
                       <p className="font-medium">{user.email}</p>
                     </div>
                     <div>
-                      <Label className="text-muted-foreground">Data rejestracji</Label>
+                      <Label className="text-muted-foreground text-xs">Data rejestracji</Label>
                       <p className="font-medium">
                         {user.created_at 
                           ? new Date(user.created_at).toLocaleDateString('pl-PL') 
@@ -291,25 +291,24 @@ export default function AccountPage() {
                   </div>
                 </div>
 
-                <div className="bg-card border border-border rounded-2xl p-6">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <div className="bg-card border border-border rounded-xl p-6">
+                  <h3 className="font-medium mb-4 flex items-center gap-2 text-sm text-muted-foreground uppercase tracking-wide">
                     <Lock className="w-4 h-4" />
                     Zmiana hasła
                   </h3>
                   <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
                     <div>
-                      <Label htmlFor="currentPassword">Obecne hasło</Label>
+                      <Label htmlFor="currentPassword" className="text-xs">Obecne hasło</Label>
                       <Input
                         id="currentPassword"
                         type="password"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         required
-                        className="rounded-xl"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="newPassword">Nowe hasło</Label>
+                      <Label htmlFor="newPassword" className="text-xs">Nowe hasło</Label>
                       <Input
                         id="newPassword"
                         type="password"
@@ -317,24 +316,21 @@ export default function AccountPage() {
                         onChange={(e) => setNewPassword(e.target.value)}
                         required
                         minLength={6}
-                        className="rounded-xl"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="confirmPassword">Potwierdź nowe hasło</Label>
+                      <Label htmlFor="confirmPassword" className="text-xs">Potwierdź nowe hasło</Label>
                       <Input
                         id="confirmPassword"
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required
-                        className="rounded-xl"
                       />
                     </div>
                     <Button 
                       type="submit" 
-                      disabled={isChangingPassword} 
-                      className="rounded-xl"
+                      disabled={isChangingPassword}
                     >
                       {isChangingPassword ? (
                         <>
