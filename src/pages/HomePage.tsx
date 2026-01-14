@@ -26,8 +26,20 @@ export default function HomePage() {
 
   const loadFeaturedProducts = async () => {
     try {
-      const data = await api.getFeaturedProducts();
-      setFeaturedProducts(data.slice(0, 4));
+      // Try featured products first
+      const featured = await api.getFeaturedProducts();
+      if (featured.length >= 4) {
+        setFeaturedProducts(featured.slice(0, 4));
+      } else {
+        // If not enough featured, get all products and pick first 4
+        const allProducts = await api.getProducts();
+        // Combine featured with other products (featured first)
+        const combined = [
+          ...featured,
+          ...allProducts.filter(p => !featured.some(f => f.id === p.id))
+        ];
+        setFeaturedProducts(combined.slice(0, 4));
+      }
     } catch (error) {
       console.error('Error loading featured products:', error);
       // Fallback: try getting all products

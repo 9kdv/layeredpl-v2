@@ -551,16 +551,67 @@ app.put('/orders/:id/status', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// ============ INPOST VERIFICATION ============
+
+app.get('/inpost/verify/:code', async (req, res) => {
+  const { code } = req.params;
+  
+  // In production, you would use InPost ShipX API with proper authorization
+  // For now, we simulate verification with common locker codes patterns
+  const lockerPattern = /^[A-Z]{3}\d{2,3}[A-Z]?$/i;
+  
+  if (!lockerPattern.test(code)) {
+    return res.json({ valid: false });
+  }
+
+  // Simulate API response - in production use:
+  // GET https://api-shipx-pl.easypack24.net/v1/points/{code}
+  // with Authorization: Bearer {token}
+  
+  // Mock response for testing
+  const mockLockers = {
+    'KRA010': 'Kraków, ul. Przykładowa 1',
+    'WAW001': 'Warszawa, ul. Centralna 15',
+    'WAW002': 'Warszawa, ul. Nowa 23',
+    'POZ005': 'Poznań, ul. Główna 7',
+    'GDA003': 'Gdańsk, ul. Morska 12',
+    'WRO008': 'Wrocław, ul. Rynek 5',
+    'KAT002': 'Katowice, ul. Przemysłowa 8',
+    'LDZ004': 'Łódź, ul. Piotrkowska 100',
+  };
+
+  const upperCode = code.toUpperCase();
+  if (mockLockers[upperCode]) {
+    return res.json({
+      valid: true,
+      name: upperCode,
+      address: mockLockers[upperCode]
+    });
+  }
+
+  // For unknown but valid-looking codes, accept them
+  // In production, this would be a real API call
+  if (lockerPattern.test(code)) {
+    return res.json({
+      valid: true,
+      name: upperCode,
+      address: `Paczkomat ${upperCode}`
+    });
+  }
+
+  res.json({ valid: false });
+});
+
 // ============ STRIPE PAYMENTS ============
 
 app.post('/checkout/create-payment-intent', async (req, res) => {
-  const { items, shipping_address, customer_email, customer_name, customer_phone } = req.body;
+  const { items, shipping_address, customer_email, customer_name, customer_phone, shipping_cost } = req.body;
 
   if (!items || !items.length) {
     return res.status(400).json({ error: 'Koszyk jest pusty' });
   }
 
-  if (!shipping_address || !shipping_address.street || !shipping_address.city || !shipping_address.postalCode) {
+  if (!shipping_address || !shipping_address.street) {
     return res.status(400).json({ error: 'Adres dostawy jest wymagany' });
   }
 
@@ -592,7 +643,10 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
       calculatedTotal += dbPrice * item.quantity;
     }
 
-    const amountInCents = Math.round(calculatedTotal * 100);
+    // Add shipping cost
+    const shippingAmount = parseFloat(shipping_cost) || 0;
+    const finalTotal = calculatedTotal + shippingAmount;
+    const amountInCents = Math.round(finalTotal * 100);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
@@ -600,9 +654,11 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
       automatic_payment_methods: {
         enabled: true,
       },
+      payment_method_types: ['card', 'p24', 'blik', 'paypal'],
       metadata: {
         customer_email: customer_email || '',
-        customer_name: customer_name || ''
+        customer_name: customer_name || '',
+        shipping_cost: shippingAmount.toString()
       }
     });
 
@@ -614,9 +670,9 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
     `, [
       orderId,
       JSON.stringify(items),
-      calculatedTotal,
+      finalTotal,
       paymentIntent.id,
-      JSON.stringify(shipping_address),
+      JSON.stringify({ ...shipping_address, shipping_cost: shippingAmount }),
       customer_email || '',
       customer_name || '',
       customer_phone || ''
