@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { motion } from 'framer-motion';
 import { 
   ArrowLeft, 
   Loader2, 
-  ShoppingBag, 
   MapPin, 
   CreditCard,
   Check,

@@ -147,7 +147,49 @@ class ApiService {
     });
   }
 
-  // User
+  // User Profile
+  async getUserProfile() {
+    return this.request<UserProfile>('/user/profile');
+  }
+
+  async updateUserProfile(data: Partial<UserProfile>) {
+    return this.request<UserProfile>('/user/profile', {
+      method: 'PUT',
+      body: data,
+    });
+  }
+
+  // Saved Addresses
+  async getSavedAddresses() {
+    return this.request<SavedAddress[]>('/user/addresses');
+  }
+
+  async addSavedAddress(address: Omit<SavedAddress, 'id' | 'user_id' | 'created_at'>) {
+    return this.request<SavedAddress>('/user/addresses', {
+      method: 'POST',
+      body: address,
+    });
+  }
+
+  async updateSavedAddress(id: string, address: Partial<SavedAddress>) {
+    return this.request<SavedAddress>(`/user/addresses/${id}`, {
+      method: 'PUT',
+      body: address,
+    });
+  }
+
+  async deleteSavedAddress(id: string) {
+    return this.request<{ success: boolean }>(`/user/addresses/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Saved Payments (read-only, managed by Stripe)
+  async getSavedPayments() {
+    return this.request<SavedPayment[]>('/user/payments');
+  }
+
+  // Password
   async changePassword(currentPassword: string, newPassword: string) {
     return this.request<{ success: boolean }>('/auth/change-password', {
       method: 'POST',
@@ -173,7 +215,8 @@ class ApiService {
     customerEmail: string,
     customerName?: string,
     customerPhone?: string,
-    shippingCost?: number
+    shippingCost?: number,
+    saveAddress?: boolean
   ) {
     return this.request<{ clientSecret: string; orderId: string }>('/checkout/create-payment-intent', {
       method: 'POST',
@@ -183,7 +226,8 @@ class ApiService {
         customer_email: customerEmail,
         customer_name: customerName,
         customer_phone: customerPhone,
-        shipping_cost: shippingCost || 0
+        shipping_cost: shippingCost || 0,
+        save_address: saveAddress
       },
     });
   }
@@ -193,9 +237,18 @@ class ApiService {
     return this.request<{ valid: boolean; address?: string; name?: string }>(`/inpost/verify/${code}`);
   }
 
+  async searchInPostLockers(query: string) {
+    return this.request<InPostLocker[]>(`/inpost/search?q=${encodeURIComponent(query)}`);
+  }
+
   // Admin Stats
   async getAdminStats() {
     return this.request<AdminStats>('/admin/stats');
+  }
+
+  // Public Stats
+  async getPublicStats() {
+    return this.request<PublicStats>('/stats/public');
   }
 }
 
@@ -204,6 +257,40 @@ export interface User {
   id: string;
   email: string;
   role: 'user' | 'admin';
+  created_at?: string;
+}
+
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SavedAddress {
+  id: string;
+  user_id: string;
+  label?: string;
+  street: string;
+  city: string;
+  postal_code: string;
+  phone?: string;
+  is_default: boolean;
+  created_at?: string;
+}
+
+export interface SavedPayment {
+  id: string;
+  user_id: string;
+  stripe_payment_method_id: string;
+  brand: string;
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  is_default: boolean;
   created_at?: string;
 }
 
@@ -258,6 +345,21 @@ export interface AdminStats {
   totalUsers: number;
   revenue: number;
   pendingOrders: number;
+}
+
+export interface PublicStats {
+  totalOrders: number;
+  totalProducts: number;
+  avgRating: number;
+  happyCustomers: number;
+}
+
+export interface InPostLocker {
+  name: string;
+  address: string;
+  city: string;
+  latitude: number;
+  longitude: number;
 }
 
 export const api = new ApiService();
