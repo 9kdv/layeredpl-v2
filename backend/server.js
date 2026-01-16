@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Stripe = require('stripe');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,6 +19,13 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_...';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_...';
 const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_...';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8080';
+
+// SMTP Config (Brevo)
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
+const SMTP_USER = process.env.SMTP_USER || '9b2973001@smtp-brevo.com';
+const SMTP_PASS = process.env.SMTP_PASSWORD || '';
+const MAIL_FROM = process.env.MAIL_FROM || 'sklep@layered.pl';
 
 // MySQL config
 const DB_CONFIG = {
@@ -33,11 +41,21 @@ const DB_CONFIG = {
 // Initialize Stripe
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
+// Initialize Nodemailer
+const transporter = nodemailer.createTransport({
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: false,
+  auth: {
+    user: SMTP_USER,
+    pass: SMTP_PASS,
+  },
+});
+
 // Database pool
 let pool;
 
 async function initDatabase() {
-  // Create connection without database first
   const tempConnection = await mysql.createConnection({
     host: DB_CONFIG.host,
     port: DB_CONFIG.port,
@@ -45,11 +63,9 @@ async function initDatabase() {
     password: DB_CONFIG.password,
   });
 
-  // Create database if not exists
   await tempConnection.execute(`CREATE DATABASE IF NOT EXISTS \`${DB_CONFIG.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   await tempConnection.end();
 
-  // Create pool with database
   pool = mysql.createPool(DB_CONFIG);
 
   // Create tables
@@ -60,6 +76,49 @@ async function initDatabase() {
       password VARCHAR(255) NOT NULL,
       role ENUM('user', 'admin') DEFAULT 'user',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) UNIQUE NOT NULL,
+      first_name VARCHAR(100),
+      last_name VARCHAR(100),
+      phone VARCHAR(50),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS saved_addresses (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      label VARCHAR(100),
+      street VARCHAR(255) NOT NULL,
+      city VARCHAR(100) NOT NULL,
+      postal_code VARCHAR(20) NOT NULL,
+      phone VARCHAR(50),
+      is_default BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS saved_payments (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      stripe_payment_method_id VARCHAR(255) NOT NULL,
+      brand VARCHAR(50),
+      last4 VARCHAR(4),
+      exp_month INT,
+      exp_year INT,
+      is_default BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
@@ -111,6 +170,69 @@ async function initDatabase() {
   console.log('Database initialized successfully');
 }
 
+// Email sending function
+async function sendOrderEmail(type, order, customerEmail) {
+  if (!SMTP_PASS) {
+    console.log('SMTP not configured, skipping email');
+    return;
+  }
+
+  const subjects = {
+    confirmation: `Potwierdzenie zamówienia #${order.id.slice(0, 8).toUpperCase()}`,
+    shipped: `Twoje zamówienie zostało wysłane #${order.id.slice(0, 8).toUpperCase()}`,
+    delivered: `Zamówienie dostarczone #${order.id.slice(0, 8).toUpperCase()}`,
+  };
+
+  const templates = {
+    confirmation: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h1 style="color: #8B5CF6;">Dziękujemy za zamówienie!</h1>
+        <p>Twoje zamówienie <strong>#${order.id.slice(0, 8).toUpperCase()}</strong> zostało przyjęte.</p>
+        <h3>Podsumowanie:</h3>
+        <ul>
+          ${order.items.map(item => `<li>${item.name} x${item.quantity} - ${(item.price * item.quantity).toFixed(2)} zł</li>`).join('')}
+        </ul>
+        <p><strong>Suma: ${order.total.toFixed(2)} zł</strong></p>
+        <p style="margin-top: 20px;">Powiadomimy Cię, gdy zamówienie zostanie wysłane.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #888; font-size: 12px;">layered.pl - Produkty drukowane w 3D</p>
+      </div>
+    `,
+    shipped: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h1 style="color: #8B5CF6;">Twoje zamówienie jest w drodze!</h1>
+        <p>Zamówienie <strong>#${order.id.slice(0, 8).toUpperCase()}</strong> zostało wysłane.</p>
+        <p>Spodziewaj się dostawy w ciągu 1-3 dni roboczych.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #888; font-size: 12px;">layered.pl - Produkty drukowane w 3D</p>
+      </div>
+    `,
+    delivered: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h1 style="color: #8B5CF6;">Zamówienie dostarczone!</h1>
+        <p>Zamówienie <strong>#${order.id.slice(0, 8).toUpperCase()}</strong> zostało dostarczone.</p>
+        <p>Dziękujemy za zakupy w layered.pl!</p>
+        <p>Jeśli masz pytania, skontaktuj się z nami.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #888; font-size: 12px;">layered.pl - Produkty drukowane w 3D</p>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail({
+      from: `"Layered.pl" <${MAIL_FROM}>`,
+      to: customerEmail,
+      bcc: 'admin@layered.pl',
+      subject: subjects[type],
+      html: templates[type],
+    });
+    console.log(`Email sent: ${type} to ${customerEmail}`);
+  } catch (err) {
+    console.error('Email error:', err);
+  }
+}
+
 // Middleware
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -131,6 +253,15 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     case 'payment_intent.succeeded':
       const paymentIntent = event.data.object;
       await pool.execute('UPDATE orders SET status = ? WHERE payment_intent_id = ?', ['paid', paymentIntent.id]);
+      
+      // Send confirmation email
+      const [orders] = await pool.execute('SELECT * FROM orders WHERE payment_intent_id = ?', [paymentIntent.id]);
+      if (orders.length > 0) {
+        const order = orders[0];
+        order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        order.total = parseFloat(order.total);
+        await sendOrderEmail('confirmation', order, order.customer_email);
+      }
       console.log('Payment succeeded:', paymentIntent.id);
       break;
     case 'payment_intent.payment_failed':
@@ -182,10 +313,36 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+// Rate limiting (simple in-memory)
+const rateLimit = {};
+const rateLimiter = (limit = 100, windowMs = 60000) => (req, res, next) => {
+  const ip = req.ip;
+  const now = Date.now();
+  
+  if (!rateLimit[ip]) rateLimit[ip] = { count: 0, start: now };
+  
+  if (now - rateLimit[ip].start > windowMs) {
+    rateLimit[ip] = { count: 0, start: now };
+  }
+  
+  rateLimit[ip].count++;
+  
+  if (rateLimit[ip].count > limit) {
+    return res.status(429).json({ error: 'Zbyt wiele żądań' });
+  }
+  
+  next();
+};
+
+// Input validation helpers
+const sanitize = (str) => str?.toString().trim().slice(0, 1000) || '';
+const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 // ============ AUTH ROUTES ============
 
-app.post('/auth/login', async (req, res) => {
-  const { email, password } = req.body;
+app.post('/auth/login', rateLimiter(10, 60000), async (req, res) => {
+  const email = sanitize(req.body.email);
+  const password = sanitize(req.body.password);
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email i hasło są wymagane' });
@@ -215,11 +372,16 @@ app.post('/auth/login', async (req, res) => {
   }
 });
 
-app.post('/auth/register', async (req, res) => {
-  const { email, password } = req.body;
+app.post('/auth/register', rateLimiter(5, 60000), async (req, res) => {
+  const email = sanitize(req.body.email);
+  const password = sanitize(req.body.password);
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email i hasło są wymagane' });
+  }
+
+  if (!validateEmail(email)) {
+    return res.status(400).json({ error: 'Nieprawidłowy format email' });
   }
 
   if (password.length < 6) {
@@ -235,6 +397,9 @@ app.post('/auth/register', async (req, res) => {
     const id = uuidv4();
     const hashedPassword = bcrypt.hashSync(password, 10);
     await pool.execute('INSERT INTO users (id, email, password) VALUES (?, ?, ?)', [id, email, hashedPassword]);
+
+    // Create empty profile
+    await pool.execute('INSERT INTO user_profiles (id, user_id) VALUES (?, ?)', [uuidv4(), id]);
 
     const token = jwt.sign({ id, email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
 
@@ -259,7 +424,8 @@ app.get('/auth/me', authenticate, async (req, res) => {
 });
 
 app.post('/auth/change-password', authenticate, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
+  const currentPassword = sanitize(req.body.currentPassword);
+  const newPassword = sanitize(req.body.newPassword);
 
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Obecne i nowe hasło są wymagane' });
@@ -288,16 +454,157 @@ app.post('/auth/change-password', authenticate, async (req, res) => {
   }
 });
 
-app.post('/auth/request-reset', async (req, res) => {
-  const { email } = req.body;
+app.post('/auth/request-reset', rateLimiter(3, 60000), async (req, res) => {
+  const email = sanitize(req.body.email);
 
   if (!email) {
     return res.status(400).json({ error: 'Email jest wymagany' });
   }
 
-  // In production, this would send an email with a reset link
-  // For now, just return success (you can implement email sending later)
+  // TODO: Implement actual password reset with email
   res.json({ success: true, message: 'Jeśli konto istnieje, email z linkiem do resetowania hasła został wysłany.' });
+});
+
+// ============ USER PROFILE ROUTES ============
+
+app.get('/user/profile', authenticate, async (req, res) => {
+  try {
+    const [profiles] = await pool.execute('SELECT * FROM user_profiles WHERE user_id = ?', [req.user.id]);
+    if (profiles.length === 0) {
+      // Create profile if doesn't exist
+      const id = uuidv4();
+      await pool.execute('INSERT INTO user_profiles (id, user_id) VALUES (?, ?)', [id, req.user.id]);
+      return res.json({ id, user_id: req.user.id });
+    }
+    res.json(profiles[0]);
+  } catch (err) {
+    console.error('Get profile error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.put('/user/profile', authenticate, async (req, res) => {
+  const first_name = sanitize(req.body.first_name);
+  const last_name = sanitize(req.body.last_name);
+  const phone = sanitize(req.body.phone);
+
+  try {
+    const [profiles] = await pool.execute('SELECT id FROM user_profiles WHERE user_id = ?', [req.user.id]);
+    
+    if (profiles.length === 0) {
+      const id = uuidv4();
+      await pool.execute(
+        'INSERT INTO user_profiles (id, user_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)',
+        [id, req.user.id, first_name, last_name, phone]
+      );
+    } else {
+      await pool.execute(
+        'UPDATE user_profiles SET first_name = ?, last_name = ?, phone = ? WHERE user_id = ?',
+        [first_name, last_name, phone, req.user.id]
+      );
+    }
+
+    const [updated] = await pool.execute('SELECT * FROM user_profiles WHERE user_id = ?', [req.user.id]);
+    res.json(updated[0]);
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// ============ SAVED ADDRESSES ROUTES ============
+
+app.get('/user/addresses', authenticate, async (req, res) => {
+  try {
+    const [addresses] = await pool.execute(
+      'SELECT * FROM saved_addresses WHERE user_id = ? ORDER BY is_default DESC, created_at DESC',
+      [req.user.id]
+    );
+    res.json(addresses);
+  } catch (err) {
+    console.error('Get addresses error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.post('/user/addresses', authenticate, async (req, res) => {
+  const { label, street, city, postal_code, phone, is_default } = req.body;
+
+  if (!street || !city || !postal_code) {
+    return res.status(400).json({ error: 'Ulica, miasto i kod pocztowy są wymagane' });
+  }
+
+  try {
+    const id = uuidv4();
+
+    // If setting as default, unset other defaults
+    if (is_default) {
+      await pool.execute('UPDATE saved_addresses SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+    }
+
+    await pool.execute(
+      'INSERT INTO saved_addresses (id, user_id, label, street, city, postal_code, phone, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, req.user.id, sanitize(label), sanitize(street), sanitize(city), sanitize(postal_code), sanitize(phone), !!is_default]
+    );
+
+    const [addresses] = await pool.execute('SELECT * FROM saved_addresses WHERE id = ?', [id]);
+    res.status(201).json(addresses[0]);
+  } catch (err) {
+    console.error('Add address error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.put('/user/addresses/:id', authenticate, async (req, res) => {
+  const { label, street, city, postal_code, phone, is_default } = req.body;
+
+  try {
+    const [existing] = await pool.execute('SELECT * FROM saved_addresses WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Adres nie znaleziony' });
+
+    if (is_default) {
+      await pool.execute('UPDATE saved_addresses SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+    }
+
+    await pool.execute(
+      'UPDATE saved_addresses SET label = ?, street = ?, city = ?, postal_code = ?, phone = ?, is_default = ? WHERE id = ?',
+      [sanitize(label), sanitize(street), sanitize(city), sanitize(postal_code), sanitize(phone), !!is_default, req.params.id]
+    );
+
+    const [updated] = await pool.execute('SELECT * FROM saved_addresses WHERE id = ?', [req.params.id]);
+    res.json(updated[0]);
+  } catch (err) {
+    console.error('Update address error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.delete('/user/addresses/:id', authenticate, async (req, res) => {
+  try {
+    const [existing] = await pool.execute('SELECT * FROM saved_addresses WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Adres nie znaleziony' });
+
+    await pool.execute('DELETE FROM saved_addresses WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete address error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// ============ SAVED PAYMENTS ROUTES ============
+
+app.get('/user/payments', authenticate, async (req, res) => {
+  try {
+    const [payments] = await pool.execute(
+      'SELECT id, brand, last4, exp_month, exp_year, is_default, created_at FROM saved_payments WHERE user_id = ? ORDER BY is_default DESC, created_at DESC',
+      [req.user.id]
+    );
+    res.json(payments);
+  } catch (err) {
+    console.error('Get payments error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
 });
 
 // ============ PRODUCTS ROUTES ============
@@ -324,7 +631,6 @@ app.get('/products', async (req, res) => {
     query += ' ORDER BY created_at DESC';
     const [products] = await pool.execute(query, params);
 
-    // Parse JSON fields
     const parsed = products.map(p => ({
       ...p,
       price: parseFloat(p.price),
@@ -373,11 +679,11 @@ app.post('/products', authenticate, requireAdmin, upload.array('images', 5), asy
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id,
-      name,
-      description || '',
-      long_description || '',
+      sanitize(name),
+      sanitize(description),
+      sanitize(long_description),
       parseFloat(price),
-      category || 'Inne',
+      sanitize(category) || 'Inne',
       availability || 'available',
       JSON.stringify(images),
       specifications || '[]',
@@ -418,11 +724,11 @@ app.put('/products/:id', authenticate, requireAdmin, upload.array('images', 5), 
       SET name = ?, description = ?, long_description = ?, price = ?, category = ?, availability = ?, images = ?, specifications = ?, featured = ?
       WHERE id = ?
     `, [
-      name || product.name,
-      description ?? product.description,
-      long_description ?? product.long_description,
+      sanitize(name) || product.name,
+      description !== undefined ? sanitize(description) : product.description,
+      long_description !== undefined ? sanitize(long_description) : product.long_description,
       price ? parseFloat(price) : product.price,
-      category || product.category,
+      sanitize(category) || product.category,
       availability || product.availability,
       JSON.stringify(images),
       specifications || product.specifications,
@@ -450,7 +756,6 @@ app.delete('/products/:id', authenticate, requireAdmin, async (req, res) => {
     const [products] = await pool.execute('SELECT images FROM products WHERE id = ?', [req.params.id]);
     if (products.length === 0) return res.status(404).json({ error: 'Produkt nie znaleziony' });
 
-    // Delete associated images
     const images = JSON.parse(products[0].images || '[]');
     images.forEach(img => {
       const filePath = path.join(__dirname, img);
@@ -519,7 +824,6 @@ app.get('/orders/:id', authenticate, async (req, res) => {
     if (orders.length === 0) return res.status(404).json({ error: 'Zamówienie nie znalezione' });
 
     const order = orders[0];
-    // Only admin or order owner can view
     if (req.user.role !== 'admin' && order.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Brak dostępu' });
     }
@@ -544,33 +848,80 @@ app.put('/orders/:id/status', authenticate, requireAdmin, async (req, res) => {
   }
 
   try {
+    const [orders] = await pool.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    if (orders.length === 0) return res.status(404).json({ error: 'Zamówienie nie znalezione' });
+
+    const order = orders[0];
+    const previousStatus = order.status;
+
     await pool.execute('UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
+
+    // Send email notifications on status change
+    if (previousStatus !== status && order.customer_email) {
+      order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      order.total = parseFloat(order.total);
+
+      if (status === 'shipped') {
+        await sendOrderEmail('shipped', order, order.customer_email);
+      } else if (status === 'delivered') {
+        await sendOrderEmail('delivered', order, order.customer_email);
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Błąd serwera' });
   }
 });
 
-// ============ INPOST VERIFICATION ============
+// ============ INPOST SEARCH & VERIFICATION ============
+
+app.get('/inpost/search', async (req, res) => {
+  const { q } = req.query;
+  
+  if (!q || q.length < 3) {
+    return res.json([]);
+  }
+
+  // In production, use InPost ShipX API:
+  // GET https://api-shipx-pl.easypack24.net/v1/points?name={query}&type=parcel_locker
+  
+  // Mock response for testing
+  const mockLockers = [
+    { name: 'KRA010', address: 'ul. Przykładowa 1', city: 'Kraków', latitude: 50.0647, longitude: 19.9450 },
+    { name: 'KRA015', address: 'ul. Główna 15', city: 'Kraków', latitude: 50.0614, longitude: 19.9372 },
+    { name: 'WAW001', address: 'ul. Centralna 15', city: 'Warszawa', latitude: 52.2297, longitude: 21.0122 },
+    { name: 'WAW002', address: 'ul. Nowa 23', city: 'Warszawa', latitude: 52.2370, longitude: 21.0175 },
+    { name: 'POZ005', address: 'ul. Główna 7', city: 'Poznań', latitude: 52.4064, longitude: 16.9252 },
+    { name: 'GDA003', address: 'ul. Morska 12', city: 'Gdańsk', latitude: 54.3520, longitude: 18.6466 },
+    { name: 'WRO008', address: 'ul. Rynek 5', city: 'Wrocław', latitude: 51.1079, longitude: 17.0385 },
+    { name: 'KAT002', address: 'ul. Przemysłowa 8', city: 'Katowice', latitude: 50.2649, longitude: 19.0238 },
+    { name: 'LDZ004', address: 'ul. Piotrkowska 100', city: 'Łódź', latitude: 51.7592, longitude: 19.4560 },
+  ];
+
+  const query = q.toLowerCase();
+  const results = mockLockers.filter(l => 
+    l.name.toLowerCase().includes(query) || 
+    l.city.toLowerCase().includes(query) || 
+    l.address.toLowerCase().includes(query)
+  ).slice(0, 10);
+
+  res.json(results);
+});
 
 app.get('/inpost/verify/:code', async (req, res) => {
   const { code } = req.params;
   
-  // In production, you would use InPost ShipX API with proper authorization
-  // For now, we simulate verification with common locker codes patterns
   const lockerPattern = /^[A-Z]{3}\d{2,3}[A-Z]?$/i;
   
   if (!lockerPattern.test(code)) {
     return res.json({ valid: false });
   }
 
-  // Simulate API response - in production use:
-  // GET https://api-shipx-pl.easypack24.net/v1/points/{code}
-  // with Authorization: Bearer {token}
-  
-  // Mock response for testing
+  // Mock response for testing - in production use InPost API
   const mockLockers = {
     'KRA010': 'Kraków, ul. Przykładowa 1',
+    'KRA015': 'Kraków, ul. Główna 15',
     'WAW001': 'Warszawa, ul. Centralna 15',
     'WAW002': 'Warszawa, ul. Nowa 23',
     'POZ005': 'Poznań, ul. Główna 7',
@@ -589,8 +940,6 @@ app.get('/inpost/verify/:code', async (req, res) => {
     });
   }
 
-  // For unknown but valid-looking codes, accept them
-  // In production, this would be a real API call
   if (lockerPattern.test(code)) {
     return res.json({
       valid: true,
@@ -605,7 +954,7 @@ app.get('/inpost/verify/:code', async (req, res) => {
 // ============ STRIPE PAYMENTS ============
 
 app.post('/checkout/create-payment-intent', async (req, res) => {
-  const { items, shipping_address, customer_email, customer_name, customer_phone, shipping_cost } = req.body;
+  const { items, shipping_address, customer_email, customer_name, customer_phone, shipping_cost, save_address } = req.body;
 
   if (!items || !items.length) {
     return res.status(400).json({ error: 'Koszyk jest pusty' });
@@ -615,12 +964,11 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
     return res.status(400).json({ error: 'Adres dostawy jest wymagany' });
   }
 
-  if (!customer_email) {
-    return res.status(400).json({ error: 'Email jest wymagany' });
+  if (!customer_email || !validateEmail(customer_email)) {
+    return res.status(400).json({ error: 'Prawidłowy email jest wymagany' });
   }
 
   try {
-    // Validate products exist and prices are correct
     let calculatedTotal = 0;
     for (const item of items) {
       const [products] = await pool.execute('SELECT id, name, price, availability FROM products WHERE id = ?', [item.id]);
@@ -643,7 +991,6 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
       calculatedTotal += dbPrice * item.quantity;
     }
 
-    // Add shipping cost
     const shippingAmount = parseFloat(shipping_cost) || 0;
     const finalTotal = calculatedTotal + shippingAmount;
     const amountInCents = Math.round(finalTotal * 100);
@@ -654,28 +1001,49 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
       automatic_payment_methods: {
         enabled: true,
       },
-      payment_method_types: ['card', 'p24', 'blik', 'paypal'],
       metadata: {
-        customer_email: customer_email || '',
-        customer_name: customer_name || '',
+        customer_email: sanitize(customer_email),
+        customer_name: sanitize(customer_name) || '',
         shipping_cost: shippingAmount.toString()
       }
     });
 
-    // Create order
     const orderId = uuidv4();
+    
+    // Get user ID if logged in
+    let userId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        userId = decoded.id;
+
+        // Save address if requested
+        if (save_address && shipping_address.street && !shipping_address.street.startsWith('Paczkomat')) {
+          await pool.execute(
+            'INSERT INTO saved_addresses (id, user_id, label, street, city, postal_code, phone, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [uuidv4(), userId, 'Zamówienie', sanitize(shipping_address.street), sanitize(shipping_address.city), sanitize(shipping_address.postalCode || ''), sanitize(shipping_address.phone || customer_phone || ''), false]
+          );
+        }
+      } catch (e) {
+        // Invalid token, continue without user
+      }
+    }
+
     await pool.execute(`
-      INSERT INTO orders (id, items, total, payment_intent_id, shipping_address, customer_email, customer_name, customer_phone)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, user_id, items, total, payment_intent_id, shipping_address, customer_email, customer_name, customer_phone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       orderId,
+      userId,
       JSON.stringify(items),
       finalTotal,
       paymentIntent.id,
       JSON.stringify({ ...shipping_address, shipping_cost: shippingAmount }),
-      customer_email || '',
-      customer_name || '',
-      customer_phone || ''
+      sanitize(customer_email),
+      sanitize(customer_name) || '',
+      sanitize(customer_phone) || ''
     ]);
 
     res.json({
@@ -688,11 +1056,29 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
   }
 });
 
-// Get Stripe publishable key
 app.get('/checkout/config', (req, res) => {
   res.json({
     publishableKey: STRIPE_PUBLISHABLE_KEY
   });
+});
+
+// ============ PUBLIC STATS ============
+
+app.get('/stats/public', async (req, res) => {
+  try {
+    const [[{ count: totalProducts }]] = await pool.execute('SELECT COUNT(*) as count FROM products');
+    const [[{ count: totalOrders }]] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status IN ('paid', 'processing', 'shipped', 'delivered')");
+    
+    res.json({
+      totalProducts,
+      totalOrders,
+      avgRating: 4.9,
+      happyCustomers: Math.max(totalOrders * 2, 150)
+    });
+  } catch (err) {
+    console.error('Public stats error:', err);
+    res.json({ totalProducts: 24, totalOrders: 500, avgRating: 4.9, happyCustomers: 150 });
+  }
 });
 
 // ============ ADMIN STATS ============
@@ -702,7 +1088,7 @@ app.get('/admin/stats', authenticate, requireAdmin, async (req, res) => {
     const [[{ count: totalProducts }]] = await pool.execute('SELECT COUNT(*) as count FROM products');
     const [[{ count: totalOrders }]] = await pool.execute('SELECT COUNT(*) as count FROM orders');
     const [[{ count: totalUsers }]] = await pool.execute('SELECT COUNT(*) as count FROM users');
-    const [[{ sum: revenue }]] = await pool.execute("SELECT COALESCE(SUM(total), 0) as sum FROM orders WHERE status = 'paid'");
+    const [[{ sum: revenue }]] = await pool.execute("SELECT COALESCE(SUM(total), 0) as sum FROM orders WHERE status IN ('paid', 'processing', 'shipped', 'delivered')");
     const [[{ count: pendingOrders }]] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'pending'");
 
     res.json({
@@ -724,6 +1110,7 @@ initDatabase().then(() => {
   app.listen(PORT, () => {
     console.log(`🚀 Layered API running on port ${PORT}`);
     console.log(`📦 Database: ${DB_CONFIG.database}@${DB_CONFIG.host}`);
+    console.log(`📧 SMTP: ${SMTP_HOST}:${SMTP_PORT}`);
   });
 }).catch(err => {
   console.error('Failed to initialize database:', err);
