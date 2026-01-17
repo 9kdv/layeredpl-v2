@@ -170,7 +170,7 @@ export default function AdminPage() {
 
   const handleOrderStatusChange = async (orderId: string, status: string) => {
     try {
-      await api.updateOrderStatus(orderId, status);
+      await api.updateOrderStatus(orderId, status as import('@/types/customization').OrderStatus);
       toast.success('Status zamówienia zmieniony');
       loadData();
     } catch (error) {

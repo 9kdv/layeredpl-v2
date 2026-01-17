@@ -612,9 +612,9 @@ export default function CheckoutPage() {
                 Podsumowanie
               </h3>
 
-              <div className="space-y-3 mb-6">
+              <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
                 {items.map((item) => (
-                  <div key={item.id} className="flex gap-3">
+                  <div key={item.cartItemId} className="flex gap-3">
                     <img 
                       src={item.image} 
                       alt={item.name} 
@@ -623,8 +623,30 @@ export default function CheckoutPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{item.name}</p>
                       <p className="text-xs text-muted-foreground">x{item.quantity}</p>
+                      {/* Customizations summary */}
+                      {item.customizations && item.customizations.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {item.customizations.map((c, idx) => (
+                            <p key={idx} className="text-xs text-muted-foreground truncate">
+                              {c.optionLabel}: {
+                                c.selectedColors?.map(col => col.name).join(', ') ||
+                                c.selectedMaterial?.name ||
+                                c.selectedSize?.name ||
+                                c.textValue ||
+                                c.uploadedFiles?.map(f => f.name).join(', ') ||
+                                c.selectedOption?.label
+                              }
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {item.nonRefundable && (
+                        <p className="text-xs text-amber-400 mt-0.5">Brak zwrotu</p>
+                      )}
                     </div>
-                    <p className="font-medium text-sm">{(item.price * item.quantity).toFixed(2)} zł</p>
+                    <p className="font-medium text-sm">
+                      {((item.price + (item.customizationPrice || 0)) * item.quantity).toFixed(2)} zł
+                    </p>
                   </div>
                 ))}
               </div>

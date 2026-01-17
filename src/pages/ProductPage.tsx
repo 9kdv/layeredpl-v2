@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { ArrowLeft, Loader2, ChevronLeft, ChevronRight, Check, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '@/contexts/CartContext';
 import { Button } from '@/components/ui/button';
 import { api, Product } from '@/lib/api';
+import { ProductCustomizer } from '@/components/ProductCustomizer';
+import { SelectedCustomization, ProductCustomization } from '@/types/customization';
 
 export default function ProductPage() {
   const { id } = useParams();
@@ -13,6 +16,12 @@ export default function ProductPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentImage, setCurrentImage] = useState(0);
   const [added, setAdded] = useState(false);
+  
+  // Customization state
+  const [customizations, setCustomizations] = useState<SelectedCustomization[]>([]);
+  const [customizationPrice, setCustomizationPrice] = useState(0);
+  const [customizationValid, setCustomizationValid] = useState(true);
+  const [nonRefundableAccepted, setNonRefundableAccepted] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -24,6 +33,15 @@ export default function ProductPage() {
     try {
       const data = await api.getProduct(productId);
       setProduct(data);
+      
+      // If no customization options, it's valid by default
+      if (!data.customization || data.customization.options.length === 0) {
+        setCustomizationValid(true);
+      } else {
+        // Check if any option is required
+        const hasRequired = data.customization.options.some(o => o.required);
+        setCustomizationValid(!hasRequired);
+      }
     } catch (error) {
       console.error('Error loading product:', error);
     } finally {
@@ -31,17 +49,36 @@ export default function ProductPage() {
     }
   };
 
+  const handleCustomizationChange = (
+    newCustomizations: SelectedCustomization[], 
+    totalPrice: number, 
+    isValid: boolean,
+    accepted: boolean
+  ) => {
+    setCustomizations(newCustomizations);
+    setCustomizationPrice(totalPrice);
+    setCustomizationValid(isValid);
+    setNonRefundableAccepted(accepted);
+  };
+
   const handleAddToCart = () => {
     if (!product || product.availability === 'unavailable') return;
+    if (product.customization && !customizationValid) return;
     
     const imageUrl = product.images[0] || '/placeholder.svg';
+    const finalImage = imageUrl.startsWith('/uploads') 
+      ? (import.meta.env.PROD ? imageUrl : `http://localhost:3001${imageUrl}`)
+      : imageUrl;
+    
     addItem({
       id: product.id,
       name: product.name,
       price: product.price,
-      image: imageUrl.startsWith('/uploads') 
-        ? (import.meta.env.PROD ? imageUrl : `http://localhost:3001${imageUrl}`)
-        : imageUrl,
+      image: finalImage,
+      customizations: customizations.length > 0 ? customizations : undefined,
+      customizationPrice: customizationPrice > 0 ? customizationPrice : undefined,
+      nonRefundable: product.customization?.nonRefundable,
+      nonRefundableAccepted: nonRefundableAccepted
     });
     
     setAdded(true);
@@ -59,6 +96,8 @@ export default function ProductPage() {
       setCurrentImage((prev) => (prev - 1 + product.images.length) % product.images.length);
     }
   };
+
+  const totalPrice = product ? product.price + customizationPrice : 0;
 
   if (isLoading) {
     return (
@@ -84,26 +123,42 @@ export default function ProductPage() {
     ? (import.meta.env.PROD ? imageUrl : `http://localhost:3001${imageUrl}`)
     : imageUrl;
 
+  const hasCustomization = product.customization && product.customization.options.length > 0;
+  const canAddToCart = product.availability !== 'unavailable' && customizationValid;
+
   return (
     <main className="pt-20 min-h-screen">
       <div className="section-container py-8">
-        <button
+        <motion.button
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8"
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Wróć
-        </button>
+        </motion.button>
 
         <div className="grid lg:grid-cols-2 gap-12">
           {/* Image Gallery */}
-          <div className="relative">
-            <div className="aspect-square bg-card overflow-hidden rounded-lg">
-              <img
-                src={displayImage}
-                alt={product.name}
-                className="w-full h-full object-cover"
-              />
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="relative"
+          >
+            <div className="aspect-square bg-card overflow-hidden rounded-2xl">
+              <AnimatePresence mode="wait">
+                <motion.img
+                  key={currentImage}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  src={displayImage}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                />
+              </AnimatePresence>
             </div>
 
             {product.images.length > 1 && (
@@ -130,7 +185,7 @@ export default function ProductPage() {
                       <button
                         key={idx}
                         onClick={() => setCurrentImage(idx)}
-                        className={`w-16 h-16 rounded-md overflow-hidden border-2 transition-colors ${
+                        className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${
                           currentImage === idx ? 'border-primary' : 'border-transparent'
                         }`}
                       >
@@ -141,10 +196,15 @@ export default function ProductPage() {
                 </div>
               </>
             )}
-          </div>
+          </motion.div>
 
           {/* Info */}
-          <div className="flex flex-col justify-center">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="flex flex-col"
+          >
             <p className="text-sm text-primary uppercase tracking-wider mb-2 font-medium">
               {product.category}
             </p>
@@ -153,7 +213,17 @@ export default function ProductPage() {
               {product.long_description || product.description}
             </p>
             
-            <p className="text-4xl font-bold mb-8">{product.price.toFixed(2)} zł</p>
+            {/* Price */}
+            <div className="mb-6">
+              <div className="flex items-baseline gap-3">
+                <span className="text-4xl font-bold">{totalPrice.toFixed(2)} zł</span>
+                {customizationPrice > 0 && (
+                  <span className="text-sm text-muted-foreground">
+                    ({product.price.toFixed(2)} + {customizationPrice.toFixed(2)} zł personalizacja)
+                  </span>
+                )}
+              </div>
+            </div>
 
             {/* Availability */}
             <div className="mb-6">
@@ -177,21 +247,35 @@ export default function ProductPage() {
               )}
             </div>
 
+            {/* Customization Options */}
+            {hasCustomization && (
+              <div className="mb-8 p-6 bg-card/50 rounded-2xl border border-border">
+                <h3 className="text-lg font-semibold mb-4">Personalizacja</h3>
+                <ProductCustomizer 
+                  customization={product.customization!}
+                  onCustomizationChange={handleCustomizationChange}
+                />
+              </div>
+            )}
+
+            {/* Add to Cart Button */}
             <Button
               onClick={handleAddToCart}
-              disabled={product.availability === 'unavailable' || added}
+              disabled={!canAddToCart || added}
               size="lg"
-              className="w-full md:w-auto h-14 text-base px-12"
+              className="w-full md:w-auto h-14 text-base px-12 rounded-xl"
             >
               {added ? (
                 <>
                   <Check className="w-5 h-5 mr-2" />
                   Dodano do koszyka
                 </>
+              ) : !canAddToCart && hasCustomization ? (
+                'Uzupełnij wymagane opcje'
               ) : product.availability === 'unavailable' ? (
                 'Niedostępny'
               ) : (
-                'Dodaj do koszyka'
+                `Dodaj do koszyka • ${totalPrice.toFixed(2)} zł`
               )}
             </Button>
 
@@ -209,7 +293,7 @@ export default function ProductPage() {
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       </div>
     </main>

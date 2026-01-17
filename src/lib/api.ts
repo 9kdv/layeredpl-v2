@@ -1,6 +1,13 @@
 // Use /api for production (nginx proxy), localhost for development
 const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3001';
 
+import { 
+  ProductCustomization, 
+  SelectedCustomization,
+  OrderStatus,
+  ORDER_STATUS_LABELS
+} from '@/types/customization';
+
 interface ApiOptions {
   method?: string;
   body?: unknown;
@@ -140,10 +147,10 @@ class ApiService {
     return this.request<Order>(`/orders/${id}`);
   }
 
-  async updateOrderStatus(id: string, status: string) {
+  async updateOrderStatus(id: string, status: OrderStatus, note?: string) {
     return this.request<{ success: boolean }>(`/orders/${id}/status`, {
       method: 'PUT',
-      body: { status },
+      body: { status, note },
     });
   }
 
@@ -210,7 +217,7 @@ class ApiService {
   }
 
   async createPaymentIntent(
-    items: CartItem[], 
+    items: CartItemApi[], 
     shippingAddress: ShippingAddress, 
     customerEmail: string,
     customerName?: string,
@@ -229,6 +236,16 @@ class ApiService {
         shipping_cost: shippingCost || 0,
         save_address: saveAddress
       },
+    });
+  }
+
+  // File upload for customization
+  async uploadCustomizationFile(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.request<{ url: string; id: string }>('/uploads/customization', {
+      method: 'POST',
+      body: formData,
     });
   }
 
@@ -305,16 +322,23 @@ export interface Product {
   images: string[];
   specifications: { label: string; value: string }[];
   featured?: boolean;
+  customization?: ProductCustomization;
   created_at?: string;
   updated_at?: string;
 }
 
-export interface CartItem {
+// Cart item for API (includes customizations)
+export interface CartItemApi {
   id: string;
+  cartItemId: string;
   name: string;
   price: number;
   image: string;
   quantity: number;
+  customizations?: SelectedCustomization[];
+  customizationPrice?: number;
+  nonRefundable?: boolean;
+  nonRefundableAccepted?: boolean;
 }
 
 export interface ShippingAddress {
@@ -328,15 +352,18 @@ export interface ShippingAddress {
 export interface Order {
   id: string;
   user_id?: string;
-  items: CartItem[];
+  items: CartItemApi[];
   total: number;
-  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: OrderStatus;
+  status_note?: string;
   payment_intent_id?: string;
   shipping_address: ShippingAddress;
   customer_email: string;
   customer_name?: string;
   customer_phone?: string;
+  has_non_refundable: boolean;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface AdminStats {
@@ -361,5 +388,8 @@ export interface InPostLocker {
   latitude: number;
   longitude: number;
 }
+
+export { ORDER_STATUS_LABELS };
+export type { OrderStatus, ProductCustomization, SelectedCustomization };
 
 export const api = new ApiService();

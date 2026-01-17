@@ -1,18 +1,25 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { SelectedCustomization } from '@/types/customization';
 
 export interface CartItem {
   id: string;
+  cartItemId: string; // Unique ID for this cart entry (allows same product with different customizations)
   name: string;
-  price: number;
+  price: number; // Base price
   image: string;
   quantity: number;
+  customizations?: SelectedCustomization[];
+  customizationPrice?: number; // Additional price from customizations
+  nonRefundable?: boolean;
+  nonRefundableAccepted?: boolean;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, 'quantity'>) => void;
-  removeItem: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
+  addItem: (item: Omit<CartItem, 'quantity' | 'cartItemId'>) => void;
+  removeItem: (cartItemId: string) => void;
+  updateQuantity: (cartItemId: string, quantity: number) => void;
+  updateCustomizations: (cartItemId: string, customizations: SelectedCustomization[], customizationPrice: number) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
@@ -22,10 +29,22 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+function generateCartItemId(): string {
+  return `cart_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(() => {
     const saved = localStorage.getItem('layered-cart');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Migration: ensure all items have cartItemId
+      return parsed.map((item: CartItem) => ({
+        ...item,
+        cartItemId: item.cartItemId || generateCartItemId()
+      }));
+    }
+    return [];
   });
   const [isOpen, setIsOpen] = useState(false);
 
@@ -33,30 +52,56 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('layered-cart', JSON.stringify(items));
   }, [items]);
 
-  const addItem = (item: Omit<CartItem, 'quantity'>) => {
+  const addItem = (item: Omit<CartItem, 'quantity' | 'cartItemId'>) => {
+    const cartItemId = generateCartItemId();
+    
     setItems((prev) => {
-      const existing = prev.find((i) => i.id === item.id);
-      if (existing) {
-        return prev.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+      // If no customizations, check for existing item with same product ID and no customizations
+      if (!item.customizations || item.customizations.length === 0) {
+        const existing = prev.find((i) => 
+          i.id === item.id && 
+          (!i.customizations || i.customizations.length === 0)
         );
+        if (existing) {
+          return prev.map((i) =>
+            i.cartItemId === existing.cartItemId 
+              ? { ...i, quantity: i.quantity + 1 } 
+              : i
+          );
+        }
       }
-      return [...prev, { ...item, quantity: 1 }];
+      
+      // Add as new item (customized items are always separate)
+      return [...prev, { ...item, cartItemId, quantity: 1 }];
     });
     setIsOpen(true);
   };
 
-  const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+  const removeItem = (cartItemId: string) => {
+    setItems((prev) => prev.filter((i) => i.cartItemId !== cartItemId));
   };
 
-  const updateQuantity = (id: string, quantity: number) => {
+  const updateQuantity = (cartItemId: string, quantity: number) => {
     if (quantity <= 0) {
-      removeItem(id);
+      removeItem(cartItemId);
       return;
     }
     setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, quantity } : i))
+      prev.map((i) => (i.cartItemId === cartItemId ? { ...i, quantity } : i))
+    );
+  };
+
+  const updateCustomizations = (
+    cartItemId: string, 
+    customizations: SelectedCustomization[], 
+    customizationPrice: number
+  ) => {
+    setItems((prev) =>
+      prev.map((i) => 
+        i.cartItemId === cartItemId 
+          ? { ...i, customizations, customizationPrice } 
+          : i
+      )
     );
   };
 
@@ -65,7 +110,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const totalPrice = items.reduce((sum, item) => {
+    const itemTotal = (item.price + (item.customizationPrice || 0)) * item.quantity;
+    return sum + itemTotal;
+  }, 0);
 
   return (
     <CartContext.Provider
@@ -74,6 +122,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         addItem,
         removeItem,
         updateQuantity,
+        updateCustomizations,
         clearCart,
         totalItems,
         totalPrice,
