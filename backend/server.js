@@ -133,6 +133,7 @@ async function initDatabase() {
       availability ENUM('available', 'low_stock', 'unavailable') DEFAULT 'available',
       images JSON,
       specifications JSON,
+      customization JSON,
       featured BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -145,14 +146,34 @@ async function initDatabase() {
       user_id VARCHAR(36),
       items JSON NOT NULL,
       total DECIMAL(10, 2) NOT NULL,
-      status ENUM('pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
+      status ENUM('pending', 'paid', 'processing', 'awaiting_info', 'shipped', 'delivered', 'cancelled', 'refund_requested', 'refunded') DEFAULT 'pending',
       payment_intent_id VARCHAR(255),
       shipping_address JSON,
       customer_email VARCHAR(255),
       customer_name VARCHAR(255),
       customer_phone VARCHAR(50),
+      delivery_method VARCHAR(50),
+      delivery_cost DECIMAL(10, 2) DEFAULT 0,
+      admin_notes TEXT,
+      tracking_number VARCHAR(255),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS customization_files (
+      id VARCHAR(36) PRIMARY KEY,
+      order_id VARCHAR(36),
+      product_id VARCHAR(36),
+      cart_item_id VARCHAR(36),
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INT,
+      file_type VARCHAR(100),
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
     )
   `);
 
@@ -181,6 +202,27 @@ async function sendOrderEmail(type, order, customerEmail) {
     confirmation: `Potwierdzenie zamówienia #${order.id.slice(0, 8).toUpperCase()}`,
     shipped: `Twoje zamówienie zostało wysłane #${order.id.slice(0, 8).toUpperCase()}`,
     delivered: `Zamówienie dostarczone #${order.id.slice(0, 8).toUpperCase()}`,
+    awaiting_info: `Wymagane działanie - zamówienie #${order.id.slice(0, 8).toUpperCase()}`,
+  };
+
+  const formatCustomizations = (items) => {
+    return items.map(item => {
+      let customInfo = '';
+      if (item.customizations && item.customizations.length > 0) {
+        customInfo = item.customizations.map(c => {
+          let value = '';
+          if (c.selectedColors?.length) value = c.selectedColors.map(col => col.name).join(', ');
+          else if (c.selectedMaterial) value = c.selectedMaterial.name;
+          else if (c.selectedSize) value = c.selectedSize.name;
+          else if (c.textValue) value = c.textValue;
+          else if (c.uploadedFiles?.length) value = `${c.uploadedFiles.length} plik(ów)`;
+          else if (c.selectedOption) value = c.selectedOption.label;
+          return `${c.optionLabel}: ${value}`;
+        }).join(', ');
+      }
+      const itemPrice = (item.price + (item.customizationPrice || 0)) * item.quantity;
+      return `<li>${item.name} x${item.quantity} - ${itemPrice.toFixed(2)} zł${customInfo ? ` (${customInfo})` : ''}${item.nonRefundable ? ' <em style="color:#888;">(bez zwrotu)</em>' : ''}</li>`;
+    }).join('');
   };
 
   const templates = {
@@ -189,9 +231,7 @@ async function sendOrderEmail(type, order, customerEmail) {
         <h1 style="color: #8B5CF6;">Dziękujemy za zamówienie!</h1>
         <p>Twoje zamówienie <strong>#${order.id.slice(0, 8).toUpperCase()}</strong> zostało przyjęte.</p>
         <h3>Podsumowanie:</h3>
-        <ul>
-          ${order.items.map(item => `<li>${item.name} x${item.quantity} - ${(item.price * item.quantity).toFixed(2)} zł</li>`).join('')}
-        </ul>
+        <ul>${formatCustomizations(order.items)}</ul>
         <p><strong>Suma: ${order.total.toFixed(2)} zł</strong></p>
         <p style="margin-top: 20px;">Powiadomimy Cię, gdy zamówienie zostanie wysłane.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
@@ -202,6 +242,7 @@ async function sendOrderEmail(type, order, customerEmail) {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h1 style="color: #8B5CF6;">Twoje zamówienie jest w drodze!</h1>
         <p>Zamówienie <strong>#${order.id.slice(0, 8).toUpperCase()}</strong> zostało wysłane.</p>
+        ${order.tracking_number ? `<p>Numer śledzenia: <strong>${order.tracking_number}</strong></p>` : ''}
         <p>Spodziewaj się dostawy w ciągu 1-3 dni roboczych.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
         <p style="color: #888; font-size: 12px;">layered.pl - Produkty drukowane w 3D</p>
@@ -213,6 +254,16 @@ async function sendOrderEmail(type, order, customerEmail) {
         <p>Zamówienie <strong>#${order.id.slice(0, 8).toUpperCase()}</strong> zostało dostarczone.</p>
         <p>Dziękujemy za zakupy w layered.pl!</p>
         <p>Jeśli masz pytania, skontaktuj się z nami.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #888; font-size: 12px;">layered.pl - Produkty drukowane w 3D</p>
+      </div>
+    `,
+    awaiting_info: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h1 style="color: #F59E0B;">Wymagane działanie</h1>
+        <p>Zamówienie <strong>#${order.id.slice(0, 8).toUpperCase()}</strong> wymaga Twojej uwagi.</p>
+        ${order.admin_notes ? `<p><strong>Uwaga od nas:</strong> ${order.admin_notes}</p>` : ''}
+        <p>Prosimy o kontakt pod adresem <a href="mailto:kontakt@layered.pl">kontakt@layered.pl</a></p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
         <p style="color: #888; font-size: 12px;">layered.pl - Produkty drukowane w 3D</p>
       </div>
@@ -635,7 +686,8 @@ app.get('/products', async (req, res) => {
       ...p,
       price: parseFloat(p.price),
       images: typeof p.images === 'string' ? JSON.parse(p.images) : (p.images || []),
-      specifications: typeof p.specifications === 'string' ? JSON.parse(p.specifications) : (p.specifications || [])
+      specifications: typeof p.specifications === 'string' ? JSON.parse(p.specifications) : (p.specifications || []),
+      customization: p.customization ? (typeof p.customization === 'string' ? JSON.parse(p.customization) : p.customization) : null
     }));
 
     res.json(parsed);
@@ -655,7 +707,8 @@ app.get('/products/:id', async (req, res) => {
       ...product,
       price: parseFloat(product.price),
       images: typeof product.images === 'string' ? JSON.parse(product.images) : (product.images || []),
-      specifications: typeof product.specifications === 'string' ? JSON.parse(product.specifications) : (product.specifications || [])
+      specifications: typeof product.specifications === 'string' ? JSON.parse(product.specifications) : (product.specifications || []),
+      customization: product.customization ? (typeof product.customization === 'string' ? JSON.parse(product.customization) : product.customization) : null
     });
   } catch (err) {
     console.error('Get product error:', err);
@@ -664,7 +717,7 @@ app.get('/products/:id', async (req, res) => {
 });
 
 app.post('/products', authenticate, requireAdmin, upload.array('images', 5), async (req, res) => {
-  const { name, description, long_description, price, category, availability, specifications, featured } = req.body;
+  const { name, description, long_description, price, category, availability, specifications, customization, featured } = req.body;
 
   if (!name || !price) {
     return res.status(400).json({ error: 'Nazwa i cena są wymagane' });
@@ -674,9 +727,19 @@ app.post('/products', authenticate, requireAdmin, upload.array('images', 5), asy
     const id = uuidv4();
     const images = req.files ? req.files.map(f => `/uploads/${f.filename}`) : [];
 
+    // Parse customization
+    let customizationData = null;
+    if (customization) {
+      try {
+        customizationData = typeof customization === 'string' ? customization : JSON.stringify(customization);
+      } catch (e) {
+        customizationData = null;
+      }
+    }
+
     await pool.execute(`
-      INSERT INTO products (id, name, description, long_description, price, category, availability, images, specifications, featured)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO products (id, name, description, long_description, price, category, availability, images, specifications, customization, featured)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id,
       sanitize(name),
@@ -687,6 +750,7 @@ app.post('/products', authenticate, requireAdmin, upload.array('images', 5), asy
       availability || 'available',
       JSON.stringify(images),
       specifications || '[]',
+      customizationData,
       featured === 'true' || featured === true
     ]);
 
@@ -697,7 +761,8 @@ app.post('/products', authenticate, requireAdmin, upload.array('images', 5), asy
       ...product,
       price: parseFloat(product.price),
       images: JSON.parse(product.images || '[]'),
-      specifications: JSON.parse(product.specifications || '[]')
+      specifications: JSON.parse(product.specifications || '[]'),
+      customization: product.customization ? JSON.parse(product.customization) : null
     });
   } catch (err) {
     console.error('Create product error:', err);
@@ -706,7 +771,7 @@ app.post('/products', authenticate, requireAdmin, upload.array('images', 5), asy
 });
 
 app.put('/products/:id', authenticate, requireAdmin, upload.array('images', 5), async (req, res) => {
-  const { name, description, long_description, price, category, availability, specifications, existingImages, featured } = req.body;
+  const { name, description, long_description, price, category, availability, specifications, customization, existingImages, featured } = req.body;
 
   try {
     const [products] = await pool.execute('SELECT * FROM products WHERE id = ?', [req.params.id]);
@@ -719,9 +784,19 @@ app.put('/products/:id', authenticate, requireAdmin, upload.array('images', 5), 
       images = [...images, ...newImages];
     }
 
+    // Parse customization
+    let customizationData = product.customization;
+    if (customization !== undefined) {
+      try {
+        customizationData = customization === null ? null : (typeof customization === 'string' ? customization : JSON.stringify(customization));
+      } catch (e) {
+        // Keep existing
+      }
+    }
+
     await pool.execute(`
       UPDATE products 
-      SET name = ?, description = ?, long_description = ?, price = ?, category = ?, availability = ?, images = ?, specifications = ?, featured = ?
+      SET name = ?, description = ?, long_description = ?, price = ?, category = ?, availability = ?, images = ?, specifications = ?, customization = ?, featured = ?
       WHERE id = ?
     `, [
       sanitize(name) || product.name,
@@ -732,6 +807,7 @@ app.put('/products/:id', authenticate, requireAdmin, upload.array('images', 5), 
       availability || product.availability,
       JSON.stringify(images),
       specifications || product.specifications,
+      customizationData,
       featured === 'true' || featured === true,
       req.params.id
     ]);
@@ -743,7 +819,8 @@ app.put('/products/:id', authenticate, requireAdmin, upload.array('images', 5), 
       ...updatedProduct,
       price: parseFloat(updatedProduct.price),
       images: JSON.parse(updatedProduct.images || '[]'),
-      specifications: JSON.parse(updatedProduct.specifications || '[]')
+      specifications: JSON.parse(updatedProduct.specifications || '[]'),
+      customization: updatedProduct.customization ? JSON.parse(updatedProduct.customization) : null
     });
   } catch (err) {
     console.error('Update product error:', err);
@@ -840,8 +917,8 @@ app.get('/orders/:id', authenticate, async (req, res) => {
 });
 
 app.put('/orders/:id/status', authenticate, requireAdmin, async (req, res) => {
-  const { status } = req.body;
-  const validStatuses = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'];
+  const { status, admin_notes, tracking_number } = req.body;
+  const validStatuses = ['pending', 'paid', 'processing', 'awaiting_info', 'shipped', 'delivered', 'cancelled', 'refund_requested', 'refunded'];
 
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: 'Nieprawidłowy status' });
@@ -854,22 +931,62 @@ app.put('/orders/:id/status', authenticate, requireAdmin, async (req, res) => {
     const order = orders[0];
     const previousStatus = order.status;
 
-    await pool.execute('UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
+    await pool.execute(
+      'UPDATE orders SET status = ?, admin_notes = ?, tracking_number = ? WHERE id = ?', 
+      [status, admin_notes || order.admin_notes, tracking_number || order.tracking_number, req.params.id]
+    );
 
     // Send email notifications on status change
     if (previousStatus !== status && order.customer_email) {
       order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
       order.total = parseFloat(order.total);
+      order.tracking_number = tracking_number || order.tracking_number;
+      order.admin_notes = admin_notes || order.admin_notes;
 
       if (status === 'shipped') {
         await sendOrderEmail('shipped', order, order.customer_email);
       } else if (status === 'delivered') {
         await sendOrderEmail('delivered', order, order.customer_email);
+      } else if (status === 'awaiting_info') {
+        await sendOrderEmail('awaiting_info', order, order.customer_email);
       }
     }
 
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Upload customization files
+app.post('/upload/customization', upload.array('files', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Brak plików' });
+    }
+
+    const uploadedFiles = req.files.map(f => ({
+      id: uuidv4(),
+      name: f.originalname,
+      url: `/uploads/${f.filename}`,
+      size: f.size,
+      type: f.mimetype
+    }));
+
+    res.json({ files: uploadedFiles });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Błąd podczas przesyłania pliku' });
+  }
+});
+
+// Get order customization files (admin)
+app.get('/orders/:id/files', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const [files] = await pool.execute('SELECT * FROM customization_files WHERE order_id = ?', [req.params.id]);
+    res.json(files);
+  } catch (err) {
+    console.error('Get order files error:', err);
     res.status(500).json({ error: 'Błąd serwera' });
   }
 });
@@ -954,7 +1071,7 @@ app.get('/inpost/verify/:code', async (req, res) => {
 // ============ STRIPE PAYMENTS ============
 
 app.post('/checkout/create-payment-intent', async (req, res) => {
-  const { items, shipping_address, customer_email, customer_name, customer_phone, shipping_cost, save_address } = req.body;
+  const { items, shipping_address, customer_email, customer_name, customer_phone, shipping_cost, delivery_method, save_address } = req.body;
 
   if (!items || !items.length) {
     return res.status(400).json({ error: 'Koszyk jest pusty' });
@@ -970,6 +1087,8 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
 
   try {
     let calculatedTotal = 0;
+    const validatedItems = [];
+
     for (const item of items) {
       const [products] = await pool.execute('SELECT id, name, price, availability FROM products WHERE id = ?', [item.id]);
       
@@ -984,11 +1103,22 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
       }
 
       const dbPrice = parseFloat(product.price);
-      if (Math.abs(dbPrice - item.price) > 0.01) {
-        return res.status(400).json({ error: `Cena produktu "${product.name}" uległa zmianie. Odśwież stronę.` });
-      }
+      const customizationPrice = parseFloat(item.customizationPrice) || 0;
+      const itemTotal = (dbPrice + customizationPrice) * item.quantity;
+      calculatedTotal += itemTotal;
 
-      calculatedTotal += dbPrice * item.quantity;
+      validatedItems.push({
+        id: item.id,
+        cartItemId: item.cartItemId,
+        name: product.name,
+        price: dbPrice,
+        quantity: item.quantity,
+        image: item.image,
+        customizations: item.customizations || [],
+        customizationPrice: customizationPrice,
+        nonRefundable: item.nonRefundable || false,
+        nonRefundableAccepted: item.nonRefundableAccepted || false
+      });
     }
 
     const shippingAmount = parseFloat(shipping_cost) || 0;
@@ -1032,19 +1162,46 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
     }
 
     await pool.execute(`
-      INSERT INTO orders (id, user_id, items, total, payment_intent_id, shipping_address, customer_email, customer_name, customer_phone)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, user_id, items, total, payment_intent_id, shipping_address, customer_email, customer_name, customer_phone, delivery_method, delivery_cost)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       orderId,
       userId,
-      JSON.stringify(items),
+      JSON.stringify(validatedItems),
       finalTotal,
       paymentIntent.id,
       JSON.stringify({ ...shipping_address, shipping_cost: shippingAmount }),
       sanitize(customer_email),
       sanitize(customer_name) || '',
-      sanitize(customer_phone) || ''
+      sanitize(customer_phone) || '',
+      delivery_method || 'courier',
+      shippingAmount
     ]);
+
+    // Save customization files to database
+    for (const item of validatedItems) {
+      if (item.customizations) {
+        for (const customization of item.customizations) {
+          if (customization.uploadedFiles) {
+            for (const file of customization.uploadedFiles) {
+              await pool.execute(`
+                INSERT INTO customization_files (id, order_id, product_id, cart_item_id, file_name, file_path, file_size, file_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              `, [
+                file.id || uuidv4(),
+                orderId,
+                item.id,
+                item.cartItemId,
+                file.name,
+                file.url,
+                file.size || 0,
+                file.type || 'image'
+              ]);
+            }
+          }
+        }
+      }
+    }
 
     res.json({
       clientSecret: paymentIntent.client_secret,
