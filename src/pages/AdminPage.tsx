@@ -11,12 +11,16 @@ import {
   LogOut,
   X,
   Upload,
-  Clock
+  Clock,
+  Settings,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -31,8 +35,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { api, Product, Order, AdminStats } from '@/lib/api';
+import { api, Product, Order, AdminStats, ProductCustomization } from '@/lib/api';
 import { toast } from 'sonner';
+import { CustomizationEditor } from '@/components/admin/CustomizationEditor';
 
 type Tab = 'dashboard' | 'products' | 'orders';
 
@@ -45,6 +50,7 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [showCustomizationEditor, setShowCustomizationEditor] = useState(false);
 
   // Product form state
   const [productForm, setProductForm] = useState<{
@@ -53,12 +59,16 @@ export default function AdminPage() {
     price: string;
     category: string;
     availability: 'available' | 'low_stock' | 'unavailable';
+    featured: boolean;
+    customization: ProductCustomization | null;
   }>({
     name: '',
     description: '',
     price: '',
     category: '',
     availability: 'available',
+    featured: false,
+    customization: null,
   });
   const [productImages, setProductImages] = useState<File[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
@@ -106,8 +116,11 @@ export default function AdminPage() {
         price: product.price.toString(),
         category: product.category,
         availability: product.availability,
+        featured: product.featured || false,
+        customization: product.customization || null,
       });
       setExistingImages(product.images);
+      setShowCustomizationEditor(!!product.customization);
     } else {
       setEditingProduct(null);
       setProductForm({
@@ -116,8 +129,11 @@ export default function AdminPage() {
         price: '',
         category: '',
         availability: 'available',
+        featured: false,
+        customization: null,
       });
       setExistingImages([]);
+      setShowCustomizationEditor(false);
     }
     setProductImages([]);
     setIsProductDialogOpen(true);
@@ -132,6 +148,11 @@ export default function AdminPage() {
     formData.append('price', productForm.price);
     formData.append('category', productForm.category);
     formData.append('availability', productForm.availability);
+    formData.append('featured', productForm.featured.toString());
+    
+    if (productForm.customization) {
+      formData.append('customization', JSON.stringify(productForm.customization));
+    }
     
     if (editingProduct) {
       formData.append('existingImages', JSON.stringify(existingImages));
@@ -436,7 +457,7 @@ export default function AdminPage() {
 
       {/* Product Dialog */}
       <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingProduct ? 'Edytuj produkt' : 'Dodaj produkt'}
@@ -489,23 +510,61 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="availability">Dostępność</Label>
-              <Select
-                value={productForm.availability}
-                onValueChange={(value: 'available' | 'low_stock' | 'unavailable') => 
-                  setProductForm(prev => ({ ...prev, availability: value }))
-                }
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="availability">Dostępność</Label>
+                <Select
+                  value={productForm.availability}
+                  onValueChange={(value: 'available' | 'low_stock' | 'unavailable') => 
+                    setProductForm(prev => ({ ...prev, availability: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="available">Dostępny</SelectItem>
+                    <SelectItem value="low_stock">Mała ilość</SelectItem>
+                    <SelectItem value="unavailable">Niedostępny</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="flex items-center justify-between pt-6">
+                <Label htmlFor="featured">Wyróżniony</Label>
+                <Switch
+                  id="featured"
+                  checked={productForm.featured}
+                  onCheckedChange={(checked) => setProductForm(prev => ({ ...prev, featured: checked }))}
+                />
+              </div>
+            </div>
+
+            {/* Customization toggle */}
+            <div className="border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setShowCustomizationEditor(!showCustomizationEditor)}
+                className="flex items-center gap-2 w-full text-left py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors"
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="available">Dostępny</SelectItem>
-                  <SelectItem value="low_stock">Mała ilość</SelectItem>
-                  <SelectItem value="unavailable">Niedostępny</SelectItem>
-                </SelectContent>
-              </Select>
+                <Settings className="w-4 h-4 text-primary" />
+                <span className="flex-1 font-medium">Personalizacja produktu</span>
+                {productForm.customization && (
+                  <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">
+                    {productForm.customization.options.length} opcji
+                  </span>
+                )}
+                {showCustomizationEditor ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              
+              {showCustomizationEditor && (
+                <div className="mt-4">
+                  <CustomizationEditor
+                    value={productForm.customization}
+                    onChange={(customization) => setProductForm(prev => ({ ...prev, customization }))}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Existing images */}

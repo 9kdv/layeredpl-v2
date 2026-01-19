@@ -239,6 +239,20 @@ class ApiService {
     });
   }
 
+  async verifyPayment(paymentIntentId: string, orderId?: string) {
+    return this.request<{ success: boolean; orderId: string; status: string }>('/checkout/verify-payment', {
+      method: 'POST',
+      body: { 
+        payment_intent_id: paymentIntentId,
+        order_id: orderId
+      },
+    });
+  }
+
+  async getOrderStatus(paymentIntentId: string) {
+    return this.request<{ orderId: string; status: string; email: string }>(`/checkout/order-status?payment_intent=${paymentIntentId}`);
+  }
+
   // File upload for customization
   async uploadCustomizationFile(file: File) {
     const formData = new FormData();
