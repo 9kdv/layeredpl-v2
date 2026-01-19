@@ -288,43 +288,7 @@ async function sendOrderEmail(type, order, customerEmail) {
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Stripe webhook needs raw body
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  switch (event.type) {
-    case 'payment_intent.succeeded':
-      const paymentIntent = event.data.object;
-      await pool.execute('UPDATE orders SET status = ? WHERE payment_intent_id = ?', ['paid', paymentIntent.id]);
-      
-      // Send confirmation email
-      const [orders] = await pool.execute('SELECT * FROM orders WHERE payment_intent_id = ?', [paymentIntent.id]);
-      if (orders.length > 0) {
-        const order = orders[0];
-        order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-        order.total = parseFloat(order.total);
-        await sendOrderEmail('confirmation', order, order.customer_email);
-      }
-      console.log('Payment succeeded:', paymentIntent.id);
-      break;
-    case 'payment_intent.payment_failed':
-      const failedPayment = event.data.object;
-      await pool.execute('UPDATE orders SET status = ? WHERE payment_intent_id = ?', ['failed', failedPayment.id]);
-      console.log('Payment failed:', failedPayment.id);
-      break;
-  }
-
-  res.json({ received: true });
-});
-
+// Parse JSON for all routes
 app.use(express.json());
 
 // File upload setup
@@ -1210,6 +1174,107 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
   } catch (err) {
     console.error('Stripe error:', err);
     res.status(500).json({ error: 'Błąd tworzenia płatności' });
+  }
+});
+
+// Verify payment and finalize order (called by frontend after successful payment)
+app.post('/checkout/verify-payment', async (req, res) => {
+  const { payment_intent_id, order_id } = req.body;
+
+  if (!payment_intent_id) {
+    return res.status(400).json({ error: 'payment_intent_id jest wymagany' });
+  }
+
+  try {
+    // Retrieve payment intent from Stripe to verify status
+    const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ 
+        error: 'Płatność nie została zakończona',
+        status: paymentIntent.status 
+      });
+    }
+
+    // Find order by payment_intent_id or order_id
+    let whereClause = 'payment_intent_id = ?';
+    let param = payment_intent_id;
+    
+    if (order_id) {
+      whereClause = 'id = ? AND payment_intent_id = ?';
+    }
+
+    const [orders] = order_id 
+      ? await pool.execute(`SELECT * FROM orders WHERE id = ? AND payment_intent_id = ?`, [order_id, payment_intent_id])
+      : await pool.execute(`SELECT * FROM orders WHERE payment_intent_id = ?`, [payment_intent_id]);
+
+    if (orders.length === 0) {
+      return res.status(404).json({ error: 'Zamówienie nie znalezione' });
+    }
+
+    const order = orders[0];
+
+    // Only update if not already paid
+    if (order.status === 'pending') {
+      await pool.execute(
+        'UPDATE orders SET status = ? WHERE id = ?', 
+        ['paid', order.id]
+      );
+
+      // Parse order data for email
+      order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      order.total = parseFloat(order.total);
+
+      // Send confirmation email
+      await sendOrderEmail('confirmation', order, order.customer_email);
+      
+      console.log(`Payment verified and order ${order.id} marked as paid`);
+    }
+
+    res.json({ 
+      success: true, 
+      orderId: order.id,
+      status: 'paid'
+    });
+  } catch (err) {
+    console.error('Payment verification error:', err);
+    
+    // Handle Stripe errors specifically
+    if (err.type === 'StripeInvalidRequestError') {
+      return res.status(400).json({ error: 'Nieprawidłowy payment intent' });
+    }
+    
+    res.status(500).json({ error: 'Błąd weryfikacji płatności' });
+  }
+});
+
+// Get order status by payment intent (for redirects from Stripe)
+app.get('/checkout/order-status', async (req, res) => {
+  const { payment_intent } = req.query;
+
+  if (!payment_intent) {
+    return res.status(400).json({ error: 'payment_intent jest wymagany' });
+  }
+
+  try {
+    const [orders] = await pool.execute(
+      'SELECT id, status, customer_email FROM orders WHERE payment_intent_id = ?',
+      [payment_intent]
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({ error: 'Zamówienie nie znalezione' });
+    }
+
+    const order = orders[0];
+    res.json({ 
+      orderId: order.id, 
+      status: order.status,
+      email: order.customer_email
+    });
+  } catch (err) {
+    console.error('Get order status error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
   }
 });
 

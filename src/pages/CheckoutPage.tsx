@@ -46,11 +46,13 @@ const steps: { id: CheckoutStep; label: string; icon: React.ReactNode }[] = [
 function PaymentForm({ 
   onSuccess,
   isProcessing,
-  setIsProcessing 
+  setIsProcessing,
+  orderId
 }: { 
   onSuccess: () => void;
   isProcessing: boolean;
   setIsProcessing: (v: boolean) => void;
+  orderId?: string;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -64,10 +66,15 @@ function PaymentForm({
     setIsProcessing(true);
     setErrorMessage(null);
 
-    const { error } = await stripe.confirmPayment({
+    // Include order_id in return URL for verification
+    const returnUrl = orderId 
+      ? `${window.location.origin}/zamowienie-sukces?order_id=${orderId}`
+      : `${window.location.origin}/zamowienie-sukces`;
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}/zamowienie-sukces`,
+        return_url: returnUrl,
       },
       redirect: 'if_required',
     });
@@ -75,6 +82,14 @@ function PaymentForm({
     if (error) {
       setErrorMessage(error.message || 'Wystąpił błąd podczas płatności');
       setIsProcessing(false);
+    } else if (paymentIntent?.status === 'succeeded') {
+      // Payment succeeded without redirect - verify on backend
+      try {
+        await api.verifyPayment(paymentIntent.id, orderId);
+      } catch (err) {
+        console.error('Verification error (payment succeeded):', err);
+      }
+      onSuccess();
     } else {
       onSuccess();
     }
@@ -210,6 +225,7 @@ export default function CheckoutPage() {
   
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('contact');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
   const [stripeInstance, setStripeInstance] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -326,6 +342,7 @@ export default function CheckoutPage() {
       );
 
       setClientSecret(result.clientSecret);
+      setOrderId(result.orderId);
       setCurrentStep('payment');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Błąd podczas tworzenia płatności');
@@ -599,6 +616,7 @@ export default function CheckoutPage() {
                   onSuccess={handlePaymentSuccess}
                   isProcessing={isProcessing}
                   setIsProcessing={setIsProcessing}
+                  orderId={orderId || undefined}
                 />
               </Elements>
             )}
