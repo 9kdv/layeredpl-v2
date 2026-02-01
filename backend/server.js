@@ -446,6 +446,33 @@ async function initDatabase() {
     await pool.execute('INSERT INTO user_profiles (id, user_id, first_name, last_name) VALUES (?, ?, ?, ?)', [uuidv4(), adminId, 'Admin', 'Layered']);
     
     console.log('Default admin created: admin@layered.pl / admin123');
+  } else {
+    // Ensure the default admin is usable in non-production environments (can get blocked/inactive during testing)
+    if (process.env.NODE_ENV !== 'production') {
+      const adminId = admins[0].id;
+      await pool.execute(
+        'UPDATE users SET is_active = TRUE, is_blocked = FALSE, failed_login_attempts = 0 WHERE id = ?',
+        [adminId]
+      );
+
+      // Ensure superadmin role is assigned
+      const [superadmin] = await pool.execute('SELECT id FROM roles WHERE name = ?', ['superadmin']);
+      if (superadmin.length > 0) {
+        await pool.execute(
+          'INSERT IGNORE INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)',
+          [uuidv4(), adminId, superadmin[0].id]
+        );
+      }
+
+      // Ensure profile exists
+      const [profiles] = await pool.execute('SELECT id FROM user_profiles WHERE user_id = ?', [adminId]);
+      if (profiles.length === 0) {
+        await pool.execute(
+          'INSERT INTO user_profiles (id, user_id, first_name, last_name) VALUES (?, ?, ?, ?)',
+          [uuidv4(), adminId, 'Admin', 'Layered']
+        );
+      }
+    }
   }
 
   console.log('Database initialized successfully with roles and permissions');
