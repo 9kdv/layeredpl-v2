@@ -20,11 +20,27 @@ import PrivacyPage from "./pages/PrivacyPage";
 import CookiesPage from "./pages/CookiesPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
-import AdminPage from "./pages/AdminPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import OrderSuccessPage from "./pages/OrderSuccessPage";
 import AccountPage from "./pages/AccountPage";
 import OrderDetailsPage from "./pages/OrderDetailsPage";
+
+// New Admin Pages
+import AdminLayout from "./pages/admin/AdminLayout";
+import DashboardPage from "./pages/admin/DashboardPage";
+import OrdersPage from "./pages/admin/OrdersPage";
+import ProductsPage from "./pages/admin/ProductsPage";
+import {
+  PromotionsPage,
+  MessagesPage,
+  ProductionPage,
+  MaterialsPage,
+  PrintersPage,
+  UsersPage,
+  ReportsPage,
+  ReturnsPage,
+  SettingsPage,
+} from "./pages/admin/PlaceholderPages";
 
 import favicon from "/favicon.svg";
 
@@ -108,7 +124,6 @@ const PageWrapper = () => {
         <Route path="/sklep" element={<ShopPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/konto" element={<AccountPage />} />
-        <Route path="/admin" element={<AdminPage />} />
         <Route path="/produkt/:id" element={<ProductPage />} />
         <Route path="/zamowienie" element={<CheckoutPage />} />
         <Route path="/zamowienie-sukces" element={<OrderSuccessPage />} />
@@ -117,6 +132,24 @@ const PageWrapper = () => {
         <Route path="/regulamin" element={<TermsPage />} />
         <Route path="/prywatnosc" element={<PrivacyPage />} />
         <Route path="/cookies" element={<CookiesPage />} />
+        
+        {/* Admin Routes */}
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="orders/:id" element={<OrdersPage />} />
+          <Route path="products" element={<ProductsPage />} />
+          <Route path="promotions" element={<PromotionsPage />} />
+          <Route path="messages" element={<MessagesPage />} />
+          <Route path="production" element={<ProductionPage />} />
+          <Route path="materials" element={<MaterialsPage />} />
+          <Route path="printers" element={<PrintersPage />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="returns" element={<ReturnsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+        
         <Route path="*" element={<NotFound />} />
       </Routes>
       {showNavbar && <Footer />}
