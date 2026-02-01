@@ -47,12 +47,23 @@ function PaymentForm({
   onSuccess,
   isProcessing,
   setIsProcessing,
-  orderId
+  paymentIntentId,
+  orderData
 }: { 
-  onSuccess: () => void;
+  onSuccess: (orderId: string) => void;
   isProcessing: boolean;
   setIsProcessing: (v: boolean) => void;
-  orderId?: string;
+  paymentIntentId?: string;
+  orderData?: {
+    items: any[];
+    shippingAddress: ShippingAddress;
+    customerEmail: string;
+    customerName: string;
+    customerPhone: string;
+    shippingCost: number;
+    deliveryMethod: string;
+    saveAddress?: boolean;
+  };
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -61,15 +72,13 @@ function PaymentForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || !paymentIntentId || !orderData) return;
 
     setIsProcessing(true);
     setErrorMessage(null);
 
-    // Include order_id in return URL for verification
-    const returnUrl = orderId 
-      ? `${window.location.origin}/zamowienie-sukces?order_id=${orderId}`
-      : `${window.location.origin}/zamowienie-sukces`;
+    // Include payment_intent_id in return URL for order creation after redirect
+    const returnUrl = `${window.location.origin}/zamowienie-sukces?payment_intent_id=${paymentIntentId}`;
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
@@ -83,15 +92,28 @@ function PaymentForm({
       setErrorMessage(error.message || 'Wystąpił błąd podczas płatności');
       setIsProcessing(false);
     } else if (paymentIntent?.status === 'succeeded') {
-      // Payment succeeded without redirect - verify on backend
+      // Payment succeeded without redirect - create order now
       try {
-        await api.verifyPayment(paymentIntent.id, orderId);
+        const result = await api.createOrder(
+          paymentIntent.id,
+          orderData.items,
+          orderData.shippingAddress,
+          orderData.customerEmail,
+          orderData.customerName,
+          orderData.customerPhone,
+          orderData.shippingCost,
+          orderData.deliveryMethod,
+          orderData.saveAddress
+        );
+        onSuccess(result.orderId);
       } catch (err) {
-        console.error('Verification error (payment succeeded):', err);
+        console.error('Order creation error:', err);
+        setErrorMessage('Płatność przeszła, ale wystąpił błąd tworzenia zamówienia. Skontaktuj się z obsługą.');
+        setIsProcessing(false);
       }
-      onSuccess();
     } else {
-      onSuccess();
+      // Redirect happened or other status
+      setIsProcessing(false);
     }
   };
 
@@ -225,11 +247,13 @@ export default function CheckoutPage() {
   
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('contact');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [orderId, setOrderId] = useState<string | null>(null);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [validatedItems, setValidatedItems] = useState<any[]>([]);
   const [stripeInstance, setStripeInstance] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifyingLocker, setIsVerifyingLocker] = useState(false);
+  const [saveAddress, setSaveAddress] = useState(false);
 
   // Form states
   const [useAccountData, setUseAccountData] = useState(true);
@@ -256,6 +280,25 @@ export default function CheckoutPage() {
   // Calculate shipping cost
   const shippingCost = deliveryMethod === 'inpost' ? 12.99 : (totalPrice >= 200 ? 0 : 15.99);
   const finalTotal = totalPrice + shippingCost;
+
+  // Computed shipping address for order creation
+  const getShippingAddress = (): ShippingAddress => {
+    return deliveryMethod === 'address' 
+      ? {
+          name: contactForm.name,
+          street: addressForm.street,
+          city: addressForm.city,
+          postalCode: addressForm.postalCode,
+          phone: contactForm.phone,
+        }
+      : {
+          name: contactForm.name,
+          street: `Paczkomat InPost: ${inpostLocker.code}`,
+          city: inpostLocker.address || 'InPost',
+          postalCode: '',
+          phone: contactForm.phone,
+        };
+  };
 
   useEffect(() => {
     if (items.length === 0) {
@@ -316,21 +359,7 @@ export default function CheckoutPage() {
     setIsLoading(true);
 
     try {
-      const shippingAddress: ShippingAddress = deliveryMethod === 'address' 
-        ? {
-            name: contactForm.name,
-            street: addressForm.street,
-            city: addressForm.city,
-            postalCode: addressForm.postalCode,
-            phone: contactForm.phone,
-          }
-        : {
-            name: contactForm.name,
-            street: `Paczkomat InPost: ${inpostLocker.code}`,
-            city: inpostLocker.address || 'InPost',
-            postalCode: '',
-            phone: contactForm.phone,
-          };
+      const shippingAddress = getShippingAddress();
 
       const result = await api.createPaymentIntent(
         items,
@@ -338,11 +367,13 @@ export default function CheckoutPage() {
         contactForm.email,
         contactForm.name,
         contactForm.phone,
-        shippingCost
+        shippingCost,
+        deliveryMethod === 'inpost' ? 'inpost' : 'courier'
       );
 
       setClientSecret(result.clientSecret);
-      setOrderId(result.orderId);
+      setPaymentIntentId(result.paymentIntentId);
+      setValidatedItems(result.validatedItems);
       setCurrentStep('payment');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Błąd podczas tworzenia płatności');
@@ -351,9 +382,9 @@ export default function CheckoutPage() {
     }
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = (orderId: string) => {
     clearCart();
-    navigate('/zamowienie-sukces');
+    navigate(`/zamowienie-sukces?order_id=${orderId}`);
   };
 
   const goBack = () => {
@@ -616,7 +647,17 @@ export default function CheckoutPage() {
                   onSuccess={handlePaymentSuccess}
                   isProcessing={isProcessing}
                   setIsProcessing={setIsProcessing}
-                  orderId={orderId || undefined}
+                  paymentIntentId={paymentIntentId || undefined}
+                  orderData={{
+                    items: validatedItems.length > 0 ? validatedItems : items,
+                    shippingAddress: getShippingAddress(),
+                    customerEmail: contactForm.email,
+                    customerName: contactForm.name,
+                    customerPhone: contactForm.phone,
+                    shippingCost: shippingCost,
+                    deliveryMethod: deliveryMethod === 'inpost' ? 'inpost' : 'courier',
+                    saveAddress: saveAddress,
+                  }}
                 />
               </Elements>
             )}
