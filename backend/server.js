@@ -1034,8 +1034,10 @@ app.get('/inpost/verify/:code', async (req, res) => {
 
 // ============ STRIPE PAYMENTS ============
 
+// Create payment intent WITHOUT creating order
+// Order is created only after successful payment verification
 app.post('/checkout/create-payment-intent', async (req, res) => {
-  const { items, shipping_address, customer_email, customer_name, customer_phone, shipping_cost, delivery_method, save_address } = req.body;
+  const { items, shipping_address, customer_email, customer_name, customer_phone, shipping_cost, delivery_method } = req.body;
 
   if (!items || !items.length) {
     return res.status(400).json({ error: 'Koszyk jest pusty' });
@@ -1089,6 +1091,19 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
     const finalTotal = calculatedTotal + shippingAmount;
     const amountInCents = Math.round(finalTotal * 100);
 
+    // Store order data in payment intent metadata for later order creation
+    const orderData = {
+      items: JSON.stringify(validatedItems),
+      shipping_address: JSON.stringify({ ...shipping_address, shipping_cost: shippingAmount }),
+      customer_email: sanitize(customer_email),
+      customer_name: sanitize(customer_name) || '',
+      customer_phone: sanitize(customer_phone) || '',
+      delivery_method: delivery_method || 'courier',
+      delivery_cost: shippingAmount.toString(),
+      total: finalTotal.toString()
+    };
+
+    // Create payment intent with order data in metadata
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: 'pln',
@@ -1096,12 +1111,124 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
         enabled: true,
       },
       metadata: {
-        customer_email: sanitize(customer_email),
-        customer_name: sanitize(customer_name) || '',
-        shipping_cost: shippingAmount.toString()
+        customer_email: orderData.customer_email,
+        customer_name: orderData.customer_name,
+        customer_phone: orderData.customer_phone,
+        shipping_cost: shippingAmount.toString(),
+        delivery_method: orderData.delivery_method,
+        // Items and address stored as metadata (limited to 500 chars each, so we'll retrieve from frontend)
       }
     });
 
+    // Return client secret - NO order created yet
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      calculatedTotal: finalTotal,
+      validatedItems: validatedItems
+    });
+  } catch (err) {
+    console.error('Stripe error:', err);
+    res.status(500).json({ error: 'Błąd tworzenia płatności' });
+  }
+});
+
+// Create order AFTER verifying payment was successful
+// This is the correct flow - order is only created when payment is confirmed
+app.post('/checkout/create-order', async (req, res) => {
+  const { 
+    payment_intent_id, 
+    items, 
+    shipping_address, 
+    customer_email, 
+    customer_name, 
+    customer_phone, 
+    shipping_cost,
+    delivery_method,
+    save_address
+  } = req.body;
+
+  if (!payment_intent_id) {
+    return res.status(400).json({ error: 'payment_intent_id jest wymagany' });
+  }
+
+  if (!items || !items.length) {
+    return res.status(400).json({ error: 'Brak produktów w zamówieniu' });
+  }
+
+  try {
+    // CRITICAL: Verify payment status with Stripe BEFORE creating order
+    const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ 
+        error: 'Płatność nie została zakończona. Zamówienie nie zostało utworzone.',
+        status: paymentIntent.status 
+      });
+    }
+
+    // Check if order with this payment intent already exists (idempotency)
+    const [existingOrders] = await pool.execute(
+      'SELECT id FROM orders WHERE payment_intent_id = ?', 
+      [payment_intent_id]
+    );
+
+    if (existingOrders.length > 0) {
+      // Order already exists, return it
+      return res.json({ 
+        success: true, 
+        orderId: existingOrders[0].id,
+        status: 'paid',
+        message: 'Zamówienie już istnieje'
+      });
+    }
+
+    // Validate all products exist and calculate prices
+    let calculatedTotal = 0;
+    const validatedItems = [];
+
+    for (const item of items) {
+      const [products] = await pool.execute('SELECT id, name, price FROM products WHERE id = ?', [item.id]);
+      
+      if (products.length === 0) {
+        return res.status(400).json({ error: `Produkt "${item.name}" nie istnieje` });
+      }
+
+      const product = products[0];
+      const dbPrice = parseFloat(product.price);
+      const customizationPrice = parseFloat(item.customizationPrice) || 0;
+      const itemTotal = (dbPrice + customizationPrice) * item.quantity;
+      calculatedTotal += itemTotal;
+
+      validatedItems.push({
+        id: item.id,
+        cartItemId: item.cartItemId,
+        name: product.name,
+        price: dbPrice,
+        quantity: item.quantity,
+        image: item.image,
+        customizations: item.customizations || [],
+        customizationPrice: customizationPrice,
+        nonRefundable: item.nonRefundable || false,
+        nonRefundableAccepted: item.nonRefundableAccepted || false
+      });
+    }
+
+    const shippingAmount = parseFloat(shipping_cost) || 0;
+    const finalTotal = calculatedTotal + shippingAmount;
+
+    // Verify amount matches what was charged
+    const chargedAmount = paymentIntent.amount / 100; // Convert from cents
+    if (Math.abs(chargedAmount - finalTotal) > 0.01) {
+      console.error(`Price mismatch! Charged: ${chargedAmount}, Calculated: ${finalTotal}`);
+      return res.status(400).json({ 
+        error: 'Niezgodność kwoty. Skontaktuj się z obsługą.',
+        charged: chargedAmount,
+        calculated: finalTotal
+      });
+    }
+
+    // Create order
     const orderId = uuidv4();
     
     // Get user ID if logged in
@@ -1114,7 +1241,7 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
         userId = decoded.id;
 
         // Save address if requested
-        if (save_address && shipping_address.street && !shipping_address.street.startsWith('Paczkomat')) {
+        if (save_address && shipping_address && shipping_address.street && !shipping_address.street.startsWith('Paczkomat')) {
           await pool.execute(
             'INSERT INTO saved_addresses (id, user_id, label, street, city, postal_code, phone, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [uuidv4(), userId, 'Zamówienie', sanitize(shipping_address.street), sanitize(shipping_address.city), sanitize(shipping_address.postalCode || ''), sanitize(shipping_address.phone || customer_phone || ''), false]
@@ -1125,15 +1252,16 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
       }
     }
 
+    // Insert order with status 'paid' (since we verified payment)
     await pool.execute(`
-      INSERT INTO orders (id, user_id, items, total, payment_intent_id, shipping_address, customer_email, customer_name, customer_phone, delivery_method, delivery_cost)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, user_id, items, total, status, payment_intent_id, shipping_address, customer_email, customer_name, customer_phone, delivery_method, delivery_cost)
+      VALUES (?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?)
     `, [
       orderId,
       userId,
       JSON.stringify(validatedItems),
       finalTotal,
-      paymentIntent.id,
+      payment_intent_id,
       JSON.stringify({ ...shipping_address, shipping_cost: shippingAmount }),
       sanitize(customer_email),
       sanitize(customer_name) || '',
@@ -1167,26 +1295,45 @@ app.post('/checkout/create-payment-intent', async (req, res) => {
       }
     }
 
-    res.json({
-      clientSecret: paymentIntent.client_secret,
-      orderId
+    // Prepare order object for email
+    const orderForEmail = {
+      id: orderId,
+      items: validatedItems,
+      total: finalTotal,
+      customer_email: sanitize(customer_email),
+      shipping_address: shipping_address
+    };
+
+    // Send confirmation email
+    await sendOrderEmail('confirmation', orderForEmail, customer_email);
+
+    console.log(`✅ Order ${orderId} created after verified payment ${payment_intent_id}`);
+
+    res.json({ 
+      success: true, 
+      orderId: orderId,
+      status: 'paid'
     });
   } catch (err) {
-    console.error('Stripe error:', err);
-    res.status(500).json({ error: 'Błąd tworzenia płatności' });
+    console.error('Create order error:', err);
+    
+    if (err.type === 'StripeInvalidRequestError') {
+      return res.status(400).json({ error: 'Nieprawidłowy payment intent' });
+    }
+    
+    res.status(500).json({ error: 'Błąd tworzenia zamówienia' });
   }
 });
 
-// Verify payment and finalize order (called by frontend after successful payment)
+// Legacy endpoint - redirect to new flow
 app.post('/checkout/verify-payment', async (req, res) => {
-  const { payment_intent_id, order_id } = req.body;
+  const { payment_intent_id } = req.body;
 
   if (!payment_intent_id) {
     return res.status(400).json({ error: 'payment_intent_id jest wymagany' });
   }
 
   try {
-    // Retrieve payment intent from Stripe to verify status
     const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
 
     if (paymentIntent.status !== 'succeeded') {
@@ -1196,50 +1343,29 @@ app.post('/checkout/verify-payment', async (req, res) => {
       });
     }
 
-    // Find order by payment_intent_id or order_id
-    let whereClause = 'payment_intent_id = ?';
-    let param = payment_intent_id;
-    
-    if (order_id) {
-      whereClause = 'id = ? AND payment_intent_id = ?';
-    }
-
-    const [orders] = order_id 
-      ? await pool.execute(`SELECT * FROM orders WHERE id = ? AND payment_intent_id = ?`, [order_id, payment_intent_id])
-      : await pool.execute(`SELECT * FROM orders WHERE payment_intent_id = ?`, [payment_intent_id]);
+    // Check if order exists
+    const [orders] = await pool.execute(
+      'SELECT id, status FROM orders WHERE payment_intent_id = ?', 
+      [payment_intent_id]
+    );
 
     if (orders.length === 0) {
-      return res.status(404).json({ error: 'Zamówienie nie znalezione' });
-    }
-
-    const order = orders[0];
-
-    // Only update if not already paid
-    if (order.status === 'pending') {
-      await pool.execute(
-        'UPDATE orders SET status = ? WHERE id = ?', 
-        ['paid', order.id]
-      );
-
-      // Parse order data for email
-      order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-      order.total = parseFloat(order.total);
-
-      // Send confirmation email
-      await sendOrderEmail('confirmation', order, order.customer_email);
-      
-      console.log(`Payment verified and order ${order.id} marked as paid`);
+      // Order doesn't exist yet - client needs to call create-order
+      return res.status(404).json({ 
+        error: 'Zamówienie nie zostało utworzone. Użyj /checkout/create-order.',
+        paymentVerified: true,
+        needsOrderCreation: true
+      });
     }
 
     res.json({ 
       success: true, 
-      orderId: order.id,
-      status: 'paid'
+      orderId: orders[0].id,
+      status: orders[0].status
     });
   } catch (err) {
     console.error('Payment verification error:', err);
     
-    // Handle Stripe errors specifically
     if (err.type === 'StripeInvalidRequestError') {
       return res.status(400).json({ error: 'Nieprawidłowy payment intent' });
     }

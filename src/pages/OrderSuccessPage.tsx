@@ -13,63 +13,78 @@ export default function OrderSuccessPage() {
   const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
-    const verifyPayment = async () => {
-      // Check for payment_intent in URL (Stripe redirect)
-      const paymentIntent = searchParams.get('payment_intent');
+    const handleOrderCreation = async () => {
+      const paymentIntentId = searchParams.get('payment_intent_id') || searchParams.get('payment_intent');
       const paymentIntentClientSecret = searchParams.get('payment_intent_client_secret');
       const orderIdParam = searchParams.get('order_id');
       const redirectStatus = searchParams.get('redirect_status');
 
-      // If we have an order_id but no payment_intent, assume success page was loaded directly
-      if (orderIdParam && !paymentIntent) {
+      // If we have an order_id, order was already created
+      if (orderIdParam && !paymentIntentId) {
         setOrderId(orderIdParam);
         setIsVerifying(false);
         clearCart();
         return;
       }
 
-      // If we have a payment_intent, verify it
-      if (paymentIntent) {
+      // If we have a payment_intent, we need to create the order
+      if (paymentIntentId) {
         try {
           // Extract payment intent ID from client secret if needed
-          const paymentIntentId = paymentIntentClientSecret 
+          const piId = paymentIntentClientSecret 
             ? paymentIntentClientSecret.split('_secret')[0]
-            : paymentIntent;
+            : paymentIntentId;
 
-          // Verify payment with backend
-          const result = await api.verifyPayment(paymentIntentId, orderIdParam || undefined);
-          
-          if (result.success) {
-            setOrderId(result.orderId);
-            clearCart();
-          } else {
-            setError('Nie udało się zweryfikować płatności');
+          // First check if order already exists
+          try {
+            const verifyResult = await api.verifyPayment(piId);
+            if (verifyResult.success && verifyResult.orderId) {
+              setOrderId(verifyResult.orderId);
+              clearCart();
+              setIsVerifying(false);
+              return;
+            }
+          } catch (verifyErr: any) {
+            // If order doesn't exist but payment is verified, we need to create order
+            // This happens after redirect from Stripe
+            if (verifyErr?.message?.includes('needsOrderCreation') || verifyErr?.message?.includes('nie zostało utworzone')) {
+              // Payment verified but order needs creation
+              // Unfortunately we don't have the cart data after redirect
+              // Show success message and ask user to contact support if issues
+              setError('Płatność przeszła pomyślnie, ale wystąpił problem z utworzeniem zamówienia. Skontaktuj się z nami pod kontakt@layered.pl podając numer płatności.');
+              setIsVerifying(false);
+              return;
+            }
           }
-        } catch (err) {
-          console.error('Payment verification error:', err);
-          
-          // If redirect_status is succeeded, try to get order status
+
+          // Try to get order status as fallback
           if (redirectStatus === 'succeeded') {
             try {
-              const statusResult = await api.getOrderStatus(paymentIntent);
-              setOrderId(statusResult.orderId);
-              clearCart();
+              const statusResult = await api.getOrderStatus(piId);
+              if (statusResult.orderId) {
+                setOrderId(statusResult.orderId);
+                clearCart();
+                setIsVerifying(false);
+                return;
+              }
             } catch (statusErr) {
-              setError('Wystąpił błąd podczas weryfikacji płatności');
+              // Order doesn't exist yet
             }
-          } else {
-            setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas weryfikacji płatności');
           }
+
+          setError('Nie znaleziono zamówienia. Jeśli płatność została pobrana, skontaktuj się z obsługą.');
+        } catch (err) {
+          console.error('Order verification error:', err);
+          setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas weryfikacji płatności');
         }
       } else {
-        // No payment intent, show error
         setError('Brak informacji o płatności');
       }
 
       setIsVerifying(false);
     };
 
-    verifyPayment();
+    handleOrderCreation();
   }, [searchParams, clearCart]);
 
   if (isVerifying) {

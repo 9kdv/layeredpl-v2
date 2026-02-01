@@ -216,6 +216,7 @@ class ApiService {
     return this.request<{ publishableKey: string }>('/checkout/config');
   }
 
+  // Step 1: Create payment intent (no order created yet)
   async createPaymentIntent(
     items: CartItemApi[], 
     shippingAddress: ShippingAddress, 
@@ -223,9 +224,14 @@ class ApiService {
     customerName?: string,
     customerPhone?: string,
     shippingCost?: number,
-    saveAddress?: boolean
+    deliveryMethod?: string
   ) {
-    return this.request<{ clientSecret: string; orderId: string }>('/checkout/create-payment-intent', {
+    return this.request<{ 
+      clientSecret: string; 
+      paymentIntentId: string;
+      calculatedTotal: number;
+      validatedItems: CartItemApi[];
+    }>('/checkout/create-payment-intent', {
       method: 'POST',
       body: { 
         items, 
@@ -234,17 +240,45 @@ class ApiService {
         customer_name: customerName,
         customer_phone: customerPhone,
         shipping_cost: shippingCost || 0,
+        delivery_method: deliveryMethod
+      },
+    });
+  }
+
+  // Step 2: Create order AFTER payment is confirmed
+  async createOrder(
+    paymentIntentId: string,
+    items: CartItemApi[], 
+    shippingAddress: ShippingAddress, 
+    customerEmail: string,
+    customerName?: string,
+    customerPhone?: string,
+    shippingCost?: number,
+    deliveryMethod?: string,
+    saveAddress?: boolean
+  ) {
+    return this.request<{ success: boolean; orderId: string; status: string }>('/checkout/create-order', {
+      method: 'POST',
+      body: { 
+        payment_intent_id: paymentIntentId,
+        items, 
+        shipping_address: shippingAddress, 
+        customer_email: customerEmail,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        shipping_cost: shippingCost || 0,
+        delivery_method: deliveryMethod,
         save_address: saveAddress
       },
     });
   }
 
-  async verifyPayment(paymentIntentId: string, orderId?: string) {
-    return this.request<{ success: boolean; orderId: string; status: string }>('/checkout/verify-payment', {
+  // Legacy verify endpoint (checks if order exists)
+  async verifyPayment(paymentIntentId: string) {
+    return this.request<{ success: boolean; orderId: string; status: string; needsOrderCreation?: boolean }>('/checkout/verify-payment', {
       method: 'POST',
       body: { 
-        payment_intent_id: paymentIntentId,
-        order_id: orderId
+        payment_intent_id: paymentIntentId
       },
     });
   }
