@@ -74,8 +74,14 @@ async function initDatabase() {
       id VARCHAR(36) PRIMARY KEY,
       email VARCHAR(255) UNIQUE NOT NULL,
       password VARCHAR(255) NOT NULL,
-      role ENUM('user', 'admin') DEFAULT 'user',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      is_active BOOLEAN DEFAULT TRUE,
+      is_blocked BOOLEAN DEFAULT FALSE,
+      failed_login_attempts INT DEFAULT 0,
+      last_login_at TIMESTAMP NULL,
+      password_changed_at TIMESTAMP NULL,
+      must_change_password BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
 
@@ -86,9 +92,94 @@ async function initDatabase() {
       first_name VARCHAR(100),
       last_name VARCHAR(100),
       phone VARCHAR(50),
+      avatar_url VARCHAR(500),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ============ ROLES AND PERMISSIONS SYSTEM ============
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id VARCHAR(36) PRIMARY KEY,
+      name VARCHAR(100) UNIQUE NOT NULL,
+      display_name VARCHAR(100) NOT NULL,
+      description TEXT,
+      priority INT DEFAULT 0,
+      is_system BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS permissions (
+      id VARCHAR(36) PRIMARY KEY,
+      name VARCHAR(100) UNIQUE NOT NULL,
+      display_name VARCHAR(100) NOT NULL,
+      description TEXT,
+      category VARCHAR(50),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      role_id VARCHAR(36) NOT NULL,
+      permission_id VARCHAR(36) NOT NULL,
+      PRIMARY KEY (role_id, permission_id),
+      FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+      FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS user_roles (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      role_id VARCHAR(36) NOT NULL,
+      assigned_by VARCHAR(36),
+      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_user_role (user_id, role_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+      FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id VARCHAR(36) PRIMARY KEY,
+      name VARCHAR(100) UNIQUE NOT NULL,
+      display_name VARCHAR(100) NOT NULL,
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS user_groups (
+      user_id VARCHAR(36) NOT NULL,
+      group_id VARCHAR(36) NOT NULL,
+      PRIMARY KEY (user_id, group_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36),
+      action VARCHAR(100) NOT NULL,
+      entity_type VARCHAR(50),
+      entity_id VARCHAR(36),
+      details JSON,
+      ip_address VARCHAR(45),
+      user_agent TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
 
@@ -131,10 +222,14 @@ async function initDatabase() {
       price DECIMAL(10, 2) NOT NULL,
       category VARCHAR(100),
       availability ENUM('available', 'low_stock', 'unavailable') DEFAULT 'available',
+      availability_reason TEXT,
+      estimated_production_days INT DEFAULT 3,
       images JSON,
       specifications JSON,
       customization JSON,
       featured BOOLEAN DEFAULT FALSE,
+      is_archived BOOLEAN DEFAULT FALSE,
+      version INT DEFAULT 1,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
@@ -144,9 +239,10 @@ async function initDatabase() {
     CREATE TABLE IF NOT EXISTS orders (
       id VARCHAR(36) PRIMARY KEY,
       user_id VARCHAR(36),
+      assigned_to VARCHAR(36),
       items JSON NOT NULL,
       total DECIMAL(10, 2) NOT NULL,
-      status ENUM('pending', 'paid', 'processing', 'awaiting_info', 'shipped', 'delivered', 'cancelled', 'refund_requested', 'refunded') DEFAULT 'pending',
+      status ENUM('pending', 'paid', 'processing', 'awaiting_info', 'approved', 'in_production', 'ready', 'shipped', 'delivered', 'cancelled', 'refund_requested', 'refunded') DEFAULT 'pending',
       payment_intent_id VARCHAR(255),
       shipping_address JSON,
       customer_email VARCHAR(255),
@@ -154,10 +250,38 @@ async function initDatabase() {
       customer_phone VARCHAR(50),
       delivery_method VARCHAR(50),
       delivery_cost DECIMAL(10, 2) DEFAULT 0,
-      admin_notes TEXT,
       tracking_number VARCHAR(255),
+      is_archived BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS order_notes (
+      id VARCHAR(36) PRIMARY KEY,
+      order_id VARCHAR(36) NOT NULL,
+      user_id VARCHAR(36),
+      note TEXT NOT NULL,
+      is_internal BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS order_status_history (
+      id VARCHAR(36) PRIMARY KEY,
+      order_id VARCHAR(36) NOT NULL,
+      user_id VARCHAR(36),
+      old_status VARCHAR(50),
+      new_status VARCHAR(50) NOT NULL,
+      note TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
@@ -172,23 +296,159 @@ async function initDatabase() {
       file_path VARCHAR(500) NOT NULL,
       file_size INT,
       file_type VARCHAR(100),
+      status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+      status_note TEXT,
       uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
     )
   `);
 
+  // Seed default roles and permissions
+  const defaultRoles = [
+    { id: uuidv4(), name: 'superadmin', display_name: 'Super Admin', description: 'Pełny dostęp do wszystkich funkcji', priority: 100, is_system: true },
+    { id: uuidv4(), name: 'admin', display_name: 'Administrator', description: 'Zarządzanie sklepem, zamówieniami, produktami', priority: 90, is_system: true },
+    { id: uuidv4(), name: 'producer', display_name: 'Producent', description: 'Dostęp do kolejki produkcji i materiałów', priority: 50, is_system: false },
+    { id: uuidv4(), name: 'support', display_name: 'Obsługa klienta', description: 'Dostęp do zamówień i wiadomości', priority: 40, is_system: false },
+    { id: uuidv4(), name: 'user', display_name: 'Użytkownik', description: 'Standardowy użytkownik sklepu', priority: 10, is_system: true }
+  ];
+
+  const defaultPermissions = [
+    // Orders
+    { id: uuidv4(), name: 'orders.view', display_name: 'Podgląd zamówień', category: 'orders' },
+    { id: uuidv4(), name: 'orders.edit', display_name: 'Edycja zamówień', category: 'orders' },
+    { id: uuidv4(), name: 'orders.status', display_name: 'Zmiana statusu', category: 'orders' },
+    { id: uuidv4(), name: 'orders.delete', display_name: 'Usuwanie zamówień', category: 'orders' },
+    { id: uuidv4(), name: 'orders.archive', display_name: 'Archiwizacja zamówień', category: 'orders' },
+    { id: uuidv4(), name: 'orders.notes', display_name: 'Notatki wewnętrzne', category: 'orders' },
+    // Products
+    { id: uuidv4(), name: 'products.view', display_name: 'Podgląd produktów', category: 'products' },
+    { id: uuidv4(), name: 'products.create', display_name: 'Tworzenie produktów', category: 'products' },
+    { id: uuidv4(), name: 'products.edit', display_name: 'Edycja produktów', category: 'products' },
+    { id: uuidv4(), name: 'products.delete', display_name: 'Usuwanie produktów', category: 'products' },
+    // Users
+    { id: uuidv4(), name: 'users.view', display_name: 'Podgląd użytkowników', category: 'users' },
+    { id: uuidv4(), name: 'users.create', display_name: 'Tworzenie użytkowników', category: 'users' },
+    { id: uuidv4(), name: 'users.edit', display_name: 'Edycja użytkowników', category: 'users' },
+    { id: uuidv4(), name: 'users.delete', display_name: 'Usuwanie użytkowników', category: 'users' },
+    { id: uuidv4(), name: 'users.roles', display_name: 'Zarządzanie rolami', category: 'users' },
+    // Finance
+    { id: uuidv4(), name: 'finance.view', display_name: 'Podgląd finansów', category: 'finance' },
+    { id: uuidv4(), name: 'finance.reports', display_name: 'Raporty finansowe', category: 'finance' },
+    // Production
+    { id: uuidv4(), name: 'production.view', display_name: 'Podgląd produkcji', category: 'production' },
+    { id: uuidv4(), name: 'production.manage', display_name: 'Zarządzanie produkcją', category: 'production' },
+    { id: uuidv4(), name: 'production.materials', display_name: 'Zarządzanie materiałami', category: 'production' },
+    // Settings
+    { id: uuidv4(), name: 'settings.view', display_name: 'Podgląd ustawień', category: 'settings' },
+    { id: uuidv4(), name: 'settings.edit', display_name: 'Edycja ustawień', category: 'settings' },
+    // Logs
+    { id: uuidv4(), name: 'logs.view', display_name: 'Podgląd logów', category: 'system' },
+    { id: uuidv4(), name: 'logs.export', display_name: 'Eksport logów', category: 'system' }
+  ];
+
+  // Insert roles if not exist
+  for (const role of defaultRoles) {
+    const [existing] = await pool.execute('SELECT id FROM roles WHERE name = ?', [role.name]);
+    if (existing.length === 0) {
+      await pool.execute(
+        'INSERT INTO roles (id, name, display_name, description, priority, is_system) VALUES (?, ?, ?, ?, ?, ?)',
+        [role.id, role.name, role.display_name, role.description, role.priority, role.is_system]
+      );
+    }
+  }
+
+  // Insert permissions if not exist
+  for (const perm of defaultPermissions) {
+    const [existing] = await pool.execute('SELECT id FROM permissions WHERE name = ?', [perm.name]);
+    if (existing.length === 0) {
+      await pool.execute(
+        'INSERT INTO permissions (id, name, display_name, description, category) VALUES (?, ?, ?, ?, ?)',
+        [perm.id, perm.name, perm.display_name, perm.description || '', perm.category]
+      );
+    }
+  }
+
+  // Assign all permissions to superadmin and admin roles
+  const [superadminRole] = await pool.execute('SELECT id FROM roles WHERE name = ?', ['superadmin']);
+  const [adminRole] = await pool.execute('SELECT id FROM roles WHERE name = ?', ['admin']);
+  const [allPermissions] = await pool.execute('SELECT id FROM permissions');
+
+  for (const perm of allPermissions) {
+    if (superadminRole.length > 0) {
+      await pool.execute('INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [superadminRole[0].id, perm.id]);
+    }
+    if (adminRole.length > 0) {
+      await pool.execute('INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [adminRole[0].id, perm.id]);
+    }
+  }
+
+  // Assign subset permissions to producer
+  const [producerRole] = await pool.execute('SELECT id FROM roles WHERE name = ?', ['producer']);
+  const producerPerms = ['orders.view', 'orders.status', 'orders.notes', 'products.view', 'production.view', 'production.manage', 'production.materials'];
+  if (producerRole.length > 0) {
+    for (const permName of producerPerms) {
+      const [perm] = await pool.execute('SELECT id FROM permissions WHERE name = ?', [permName]);
+      if (perm.length > 0) {
+        await pool.execute('INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [producerRole[0].id, perm[0].id]);
+      }
+    }
+  }
+
+  // Assign subset permissions to support
+  const [supportRole] = await pool.execute('SELECT id FROM roles WHERE name = ?', ['support']);
+  const supportPerms = ['orders.view', 'orders.status', 'orders.notes', 'products.view', 'users.view'];
+  if (supportRole.length > 0) {
+    for (const permName of supportPerms) {
+      const [perm] = await pool.execute('SELECT id FROM permissions WHERE name = ?', [permName]);
+      if (perm.length > 0) {
+        await pool.execute('INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [supportRole[0].id, perm[0].id]);
+      }
+    }
+  }
+
+  // Default groups
+  const defaultGroups = [
+    { name: 'production', display_name: 'Produkcja', description: 'Zespół produkcyjny' },
+    { name: 'support', display_name: 'Obsługa', description: 'Zespół obsługi klienta' },
+    { name: 'management', display_name: 'Management', description: 'Kadra zarządzająca' }
+  ];
+
+  for (const group of defaultGroups) {
+    const [existing] = await pool.execute('SELECT id FROM groups WHERE name = ?', [group.name]);
+    if (existing.length === 0) {
+      await pool.execute(
+        'INSERT INTO groups (id, name, display_name, description) VALUES (?, ?, ?, ?)',
+        [uuidv4(), group.name, group.display_name, group.description]
+      );
+    }
+  }
+
   // Create default admin if not exists
-  const [admins] = await pool.execute('SELECT id FROM users WHERE role = ?', ['admin']);
+  const [admins] = await pool.execute('SELECT id FROM users WHERE email = ?', ['admin@layered.pl']);
   if (admins.length === 0) {
+    const adminId = uuidv4();
     const hashedPassword = bcrypt.hashSync('admin123', 10);
     await pool.execute(
-      'INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)',
-      [uuidv4(), 'admin@layered.pl', hashedPassword, 'admin']
+      'INSERT INTO users (id, email, password) VALUES (?, ?, ?)',
+      [adminId, 'admin@layered.pl', hashedPassword]
     );
+    
+    // Assign superadmin role
+    const [superadmin] = await pool.execute('SELECT id FROM roles WHERE name = ?', ['superadmin']);
+    if (superadmin.length > 0) {
+      await pool.execute(
+        'INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)',
+        [uuidv4(), adminId, superadmin[0].id]
+      );
+    }
+    
+    // Create profile
+    await pool.execute('INSERT INTO user_profiles (id, user_id, first_name, last_name) VALUES (?, ?, ?, ?)', [uuidv4(), adminId, 'Admin', 'Layered']);
+    
     console.log('Default admin created: admin@layered.pl / admin123');
   }
 
-  console.log('Database initialized successfully');
+  console.log('Database initialized successfully with roles and permissions');
 }
 
 // Email sending function
@@ -304,8 +564,8 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
-// Auth middleware
-const authenticate = (req, res, next) => {
+// Auth middleware - now uses role-based system
+const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Brak autoryzacji' });
@@ -314,18 +574,85 @@ const authenticate = (req, res, next) => {
   try {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
+    
+    // Fetch user with roles
+    const [users] = await pool.execute('SELECT * FROM users WHERE id = ?', [decoded.id]);
+    if (users.length === 0 || !users[0].is_active || users[0].is_blocked) {
+      return res.status(401).json({ error: 'Konto nieaktywne lub zablokowane' });
+    }
+
+    const user = users[0];
+    
+    // Get user roles with permissions
+    const [userRoles] = await pool.execute(`
+      SELECT r.name as role_name, r.display_name, r.priority
+      FROM user_roles ur
+      JOIN roles r ON ur.role_id = r.id
+      WHERE ur.user_id = ?
+      ORDER BY r.priority DESC
+    `, [user.id]);
+
+    // Get all permissions for user's roles
+    const [permissions] = await pool.execute(`
+      SELECT DISTINCT p.name
+      FROM user_roles ur
+      JOIN role_permissions rp ON ur.role_id = rp.role_id
+      JOIN permissions p ON rp.permission_id = p.id
+      WHERE ur.user_id = ?
+    `, [user.id]);
+
+    req.user = {
+      id: user.id,
+      email: user.email,
+      roles: userRoles.map(r => r.role_name),
+      primaryRole: userRoles.length > 0 ? userRoles[0].role_name : 'user',
+      permissions: permissions.map(p => p.name),
+      // Legacy compatibility
+      role: userRoles.some(r => ['superadmin', 'admin'].includes(r.role_name)) ? 'admin' : 'user'
+    };
+    
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Nieprawidłowy token' });
   }
 };
 
+// Permission checking middleware
+const requirePermission = (...requiredPermissions) => (req, res, next) => {
+  // Superadmin has all permissions
+  if (req.user.roles.includes('superadmin')) return next();
+  
+  const hasPermission = requiredPermissions.some(perm => req.user.permissions.includes(perm));
+  if (!hasPermission) {
+    return res.status(403).json({ error: 'Brak wymaganych uprawnień' });
+  }
+  next();
+};
+
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
+  if (!req.user.roles.some(r => ['superadmin', 'admin'].includes(r))) {
     return res.status(403).json({ error: 'Brak uprawnień administratora' });
   }
   next();
+};
+
+const requireSuperAdmin = (req, res, next) => {
+  if (!req.user.roles.includes('superadmin')) {
+    return res.status(403).json({ error: 'Wymagane uprawnienia superadmina' });
+  }
+  next();
+};
+
+// Activity logging helper
+const logActivity = async (userId, action, entityType, entityId, details, req) => {
+  try {
+    await pool.execute(
+      'INSERT INTO activity_logs (id, user_id, action, entity_type, entity_id, details, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [uuidv4(), userId, action, entityType, entityId, JSON.stringify(details), req?.ip || null, req?.headers?.['user-agent']?.slice(0, 500) || null]
+    );
+  } catch (err) {
+    console.error('Activity log error:', err);
+  }
 };
 
 // Rate limiting (simple in-memory)
@@ -367,19 +694,71 @@ app.post('/auth/login', rateLimiter(10, 60000), async (req, res) => {
     const [users] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
     const user = users[0];
 
-    if (!user || !bcrypt.compareSync(password, user.password)) {
+    if (!user) {
       return res.status(401).json({ error: 'Nieprawidłowy email lub hasło' });
     }
 
+    // Check if blocked
+    if (user.is_blocked) {
+      return res.status(401).json({ error: 'Konto zostało zablokowane. Skontaktuj się z administratorem.' });
+    }
+
+    if (!user.is_active) {
+      return res.status(401).json({ error: 'Konto jest nieaktywne' });
+    }
+
+    // Check password with failed attempts tracking
+    if (!bcrypt.compareSync(password, user.password)) {
+      const newAttempts = (user.failed_login_attempts || 0) + 1;
+      await pool.execute('UPDATE users SET failed_login_attempts = ? WHERE id = ?', [newAttempts, user.id]);
+      
+      // Block after 5 failed attempts
+      if (newAttempts >= 5) {
+        await pool.execute('UPDATE users SET is_blocked = TRUE WHERE id = ?', [user.id]);
+        return res.status(401).json({ error: 'Konto zostało zablokowane po zbyt wielu nieudanych próbach logowania.' });
+      }
+      
+      return res.status(401).json({ error: 'Nieprawidłowy email lub hasło' });
+    }
+
+    // Reset failed attempts and update last login
+    await pool.execute(
+      'UPDATE users SET failed_login_attempts = 0, last_login_at = NOW() WHERE id = ?', 
+      [user.id]
+    );
+
+    // Get user roles
+    const [userRoles] = await pool.execute(`
+      SELECT r.name as role_name, r.display_name, r.priority
+      FROM user_roles ur
+      JOIN roles r ON ur.role_id = r.id
+      WHERE ur.user_id = ?
+      ORDER BY r.priority DESC
+    `, [user.id]);
+
+    const roles = userRoles.map(r => r.role_name);
+    const primaryRole = roles.length > 0 ? roles[0] : 'user';
+    const isAdmin = roles.some(r => ['superadmin', 'admin'].includes(r));
+
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
+    // Log activity
+    await logActivity(user.id, 'login', 'user', user.id, { ip: req.ip }, req);
+
     res.json({
       token,
-      user: { id: user.id, email: user.email, role: user.role }
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        role: isAdmin ? 'admin' : 'user',
+        roles: roles,
+        primaryRole: primaryRole,
+        mustChangePassword: user.must_change_password
+      }
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -430,9 +809,25 @@ app.post('/auth/register', rateLimiter(5, 60000), async (req, res) => {
 
 app.get('/auth/me', authenticate, async (req, res) => {
   try {
-    const [users] = await pool.execute('SELECT id, email, role, created_at FROM users WHERE id = ?', [req.user.id]);
+    const [users] = await pool.execute(
+      'SELECT id, email, is_active, is_blocked, must_change_password, last_login_at, created_at FROM users WHERE id = ?', 
+      [req.user.id]
+    );
     if (users.length === 0) return res.status(404).json({ error: 'Użytkownik nie znaleziony' });
-    res.json(users[0]);
+    
+    const user = users[0];
+    
+    res.json({
+      id: user.id,
+      email: user.email,
+      role: req.user.role,
+      roles: req.user.roles,
+      primaryRole: req.user.primaryRole,
+      permissions: req.user.permissions,
+      mustChangePassword: user.must_change_password,
+      lastLoginAt: user.last_login_at,
+      createdAt: user.created_at
+    });
   } catch (err) {
     res.status(500).json({ error: 'Błąd serwera' });
   }
@@ -460,7 +855,12 @@ app.post('/auth/change-password', authenticate, async (req, res) => {
     }
 
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
-    await pool.execute('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
+    await pool.execute(
+      'UPDATE users SET password = ?, must_change_password = FALSE, password_changed_at = NOW() WHERE id = ?', 
+      [hashedPassword, req.user.id]
+    );
+
+    await logActivity(req.user.id, 'password_change', 'user', req.user.id, {}, req);
 
     res.json({ success: true });
   } catch (err) {
@@ -478,6 +878,503 @@ app.post('/auth/request-reset', rateLimiter(3, 60000), async (req, res) => {
 
   // TODO: Implement actual password reset with email
   res.json({ success: true, message: 'Jeśli konto istnieje, email z linkiem do resetowania hasła został wysłany.' });
+});
+
+// ============ ROLES & PERMISSIONS API ============
+
+// Get all roles
+app.get('/admin/roles', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const [roles] = await pool.execute('SELECT * FROM roles ORDER BY priority DESC');
+    
+    // Get permissions for each role
+    for (const role of roles) {
+      const [perms] = await pool.execute(`
+        SELECT p.* FROM permissions p
+        JOIN role_permissions rp ON p.id = rp.permission_id
+        WHERE rp.role_id = ?
+      `, [role.id]);
+      role.permissions = perms;
+    }
+    
+    res.json(roles);
+  } catch (err) {
+    console.error('Get roles error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Create role
+app.post('/admin/roles', authenticate, requireSuperAdmin, async (req, res) => {
+  const { name, display_name, description, priority, permissions } = req.body;
+
+  if (!name || !display_name) {
+    return res.status(400).json({ error: 'Nazwa i nazwa wyświetlana są wymagane' });
+  }
+
+  try {
+    const id = uuidv4();
+    await pool.execute(
+      'INSERT INTO roles (id, name, display_name, description, priority) VALUES (?, ?, ?, ?, ?)',
+      [id, sanitize(name), sanitize(display_name), sanitize(description), priority || 0]
+    );
+
+    // Assign permissions
+    if (permissions && Array.isArray(permissions)) {
+      for (const permId of permissions) {
+        await pool.execute('INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [id, permId]);
+      }
+    }
+
+    await logActivity(req.user.id, 'create_role', 'role', id, { name }, req);
+
+    const [roles] = await pool.execute('SELECT * FROM roles WHERE id = ?', [id]);
+    res.status(201).json(roles[0]);
+  } catch (err) {
+    console.error('Create role error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Update role
+app.put('/admin/roles/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  const { display_name, description, priority, permissions } = req.body;
+
+  try {
+    const [existing] = await pool.execute('SELECT * FROM roles WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Rola nie znaleziona' });
+
+    const role = existing[0];
+    if (role.is_system && role.name === 'superadmin') {
+      return res.status(400).json({ error: 'Nie można modyfikować roli superadmin' });
+    }
+
+    await pool.execute(
+      'UPDATE roles SET display_name = ?, description = ?, priority = ? WHERE id = ?',
+      [sanitize(display_name) || role.display_name, sanitize(description), priority ?? role.priority, req.params.id]
+    );
+
+    // Update permissions
+    if (permissions && Array.isArray(permissions)) {
+      await pool.execute('DELETE FROM role_permissions WHERE role_id = ?', [req.params.id]);
+      for (const permId of permissions) {
+        await pool.execute('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [req.params.id, permId]);
+      }
+    }
+
+    await logActivity(req.user.id, 'update_role', 'role', req.params.id, { display_name }, req);
+
+    const [updated] = await pool.execute('SELECT * FROM roles WHERE id = ?', [req.params.id]);
+    res.json(updated[0]);
+  } catch (err) {
+    console.error('Update role error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Delete role
+app.delete('/admin/roles/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    const [existing] = await pool.execute('SELECT * FROM roles WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Rola nie znaleziona' });
+
+    if (existing[0].is_system) {
+      return res.status(400).json({ error: 'Nie można usunąć roli systemowej' });
+    }
+
+    await pool.execute('DELETE FROM roles WHERE id = ?', [req.params.id]);
+    await logActivity(req.user.id, 'delete_role', 'role', req.params.id, { name: existing[0].name }, req);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete role error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Get all permissions
+app.get('/admin/permissions', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const [permissions] = await pool.execute('SELECT * FROM permissions ORDER BY category, name');
+    res.json(permissions);
+  } catch (err) {
+    console.error('Get permissions error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Get all groups
+app.get('/admin/groups', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const [groups] = await pool.execute('SELECT * FROM groups ORDER BY name');
+    
+    // Get member count for each group
+    for (const group of groups) {
+      const [[{ count }]] = await pool.execute('SELECT COUNT(*) as count FROM user_groups WHERE group_id = ?', [group.id]);
+      group.memberCount = count;
+    }
+    
+    res.json(groups);
+  } catch (err) {
+    console.error('Get groups error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Create group
+app.post('/admin/groups', authenticate, requireAdmin, async (req, res) => {
+  const { name, display_name, description } = req.body;
+
+  if (!name || !display_name) {
+    return res.status(400).json({ error: 'Nazwa jest wymagana' });
+  }
+
+  try {
+    const id = uuidv4();
+    await pool.execute(
+      'INSERT INTO groups (id, name, display_name, description) VALUES (?, ?, ?, ?)',
+      [id, sanitize(name), sanitize(display_name), sanitize(description)]
+    );
+
+    await logActivity(req.user.id, 'create_group', 'group', id, { name }, req);
+
+    const [groups] = await pool.execute('SELECT * FROM groups WHERE id = ?', [id]);
+    res.status(201).json(groups[0]);
+  } catch (err) {
+    console.error('Create group error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// ============ ADMIN USERS MANAGEMENT ============
+
+// Get all users (admin)
+app.get('/admin/users', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const [users] = await pool.execute(`
+      SELECT u.id, u.email, u.is_active, u.is_blocked, u.last_login_at, u.created_at,
+             up.first_name, up.last_name, up.phone
+      FROM users u
+      LEFT JOIN user_profiles up ON u.id = up.user_id
+      ORDER BY u.created_at DESC
+    `);
+
+    // Get roles for each user
+    for (const user of users) {
+      const [roles] = await pool.execute(`
+        SELECT r.id, r.name, r.display_name, r.priority
+        FROM user_roles ur
+        JOIN roles r ON ur.role_id = r.id
+        WHERE ur.user_id = ?
+        ORDER BY r.priority DESC
+      `, [user.id]);
+      user.roles = roles;
+      
+      const [groups] = await pool.execute(`
+        SELECT g.id, g.name, g.display_name
+        FROM user_groups ug
+        JOIN groups g ON ug.group_id = g.id
+        WHERE ug.user_id = ?
+      `, [user.id]);
+      user.groups = groups;
+    }
+
+    res.json(users);
+  } catch (err) {
+    console.error('Get users error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Get single user (admin)
+app.get('/admin/users/:id', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const [users] = await pool.execute(`
+      SELECT u.*, up.first_name, up.last_name, up.phone
+      FROM users u
+      LEFT JOIN user_profiles up ON u.id = up.user_id
+      WHERE u.id = ?
+    `, [req.params.id]);
+
+    if (users.length === 0) return res.status(404).json({ error: 'Użytkownik nie znaleziony' });
+
+    const user = users[0];
+    delete user.password;
+
+    // Get roles
+    const [roles] = await pool.execute(`
+      SELECT r.*, ur.assigned_at, 
+             (SELECT email FROM users WHERE id = ur.assigned_by) as assigned_by_email
+      FROM user_roles ur
+      JOIN roles r ON ur.role_id = r.id
+      WHERE ur.user_id = ?
+      ORDER BY r.priority DESC
+    `, [user.id]);
+    user.roles = roles;
+
+    // Get groups
+    const [groups] = await pool.execute(`
+      SELECT g.* FROM user_groups ug
+      JOIN groups g ON ug.group_id = g.id
+      WHERE ug.user_id = ?
+    `, [user.id]);
+    user.groups = groups;
+
+    // Get order count
+    const [[{ orderCount }]] = await pool.execute(
+      'SELECT COUNT(*) as orderCount FROM orders WHERE user_id = ?', 
+      [user.id]
+    );
+    user.orderCount = orderCount;
+
+    // Get recent activity
+    const [activity] = await pool.execute(`
+      SELECT * FROM activity_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 10
+    `, [user.id]);
+    user.recentActivity = activity;
+
+    res.json(user);
+  } catch (err) {
+    console.error('Get user error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Create user (admin)
+app.post('/admin/users', authenticate, requirePermission('users.create'), async (req, res) => {
+  const { email, password, first_name, last_name, phone, roles, groups, sendActivationEmail } = req.body;
+
+  if (!email || !validateEmail(email)) {
+    return res.status(400).json({ error: 'Prawidłowy email jest wymagany' });
+  }
+
+  try {
+    const [existing] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Użytkownik z tym emailem już istnieje' });
+    }
+
+    const id = uuidv4();
+    const tempPassword = password || Math.random().toString(36).slice(-12);
+    const hashedPassword = bcrypt.hashSync(tempPassword, 10);
+
+    await pool.execute(
+      'INSERT INTO users (id, email, password, must_change_password) VALUES (?, ?, ?, ?)',
+      [id, sanitize(email), hashedPassword, !password]
+    );
+
+    // Create profile
+    await pool.execute(
+      'INSERT INTO user_profiles (id, user_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)',
+      [uuidv4(), id, sanitize(first_name), sanitize(last_name), sanitize(phone)]
+    );
+
+    // Assign roles
+    if (roles && Array.isArray(roles)) {
+      for (const roleId of roles) {
+        await pool.execute(
+          'INSERT INTO user_roles (id, user_id, role_id, assigned_by) VALUES (?, ?, ?, ?)',
+          [uuidv4(), id, roleId, req.user.id]
+        );
+      }
+    } else {
+      // Assign default user role
+      const [userRole] = await pool.execute('SELECT id FROM roles WHERE name = ?', ['user']);
+      if (userRole.length > 0) {
+        await pool.execute(
+          'INSERT INTO user_roles (id, user_id, role_id, assigned_by) VALUES (?, ?, ?, ?)',
+          [uuidv4(), id, userRole[0].id, req.user.id]
+        );
+      }
+    }
+
+    // Assign groups
+    if (groups && Array.isArray(groups)) {
+      for (const groupId of groups) {
+        await pool.execute('INSERT INTO user_groups (user_id, group_id) VALUES (?, ?)', [id, groupId]);
+      }
+    }
+
+    await logActivity(req.user.id, 'create_user', 'user', id, { email }, req);
+
+    // TODO: Send activation email if requested
+
+    res.status(201).json({ success: true, id, tempPassword: !password ? tempPassword : undefined });
+  } catch (err) {
+    console.error('Create user error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Update user (admin)
+app.put('/admin/users/:id', authenticate, requirePermission('users.edit'), async (req, res) => {
+  const { email, first_name, last_name, phone, is_active, is_blocked, must_change_password, roles, groups } = req.body;
+
+  try {
+    const [existing] = await pool.execute('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Użytkownik nie znaleziony' });
+
+    // Update user
+    await pool.execute(`
+      UPDATE users SET 
+        email = ?, is_active = ?, is_blocked = ?, must_change_password = ?
+      WHERE id = ?
+    `, [
+      sanitize(email) || existing[0].email,
+      is_active !== undefined ? is_active : existing[0].is_active,
+      is_blocked !== undefined ? is_blocked : existing[0].is_blocked,
+      must_change_password !== undefined ? must_change_password : existing[0].must_change_password,
+      req.params.id
+    ]);
+
+    // Update profile
+    await pool.execute(`
+      UPDATE user_profiles SET first_name = ?, last_name = ?, phone = ? WHERE user_id = ?
+    `, [sanitize(first_name), sanitize(last_name), sanitize(phone), req.params.id]);
+
+    // Update roles if provided (requires users.roles permission)
+    if (roles && Array.isArray(roles) && req.user.permissions.includes('users.roles')) {
+      await pool.execute('DELETE FROM user_roles WHERE user_id = ?', [req.params.id]);
+      for (const roleId of roles) {
+        await pool.execute(
+          'INSERT INTO user_roles (id, user_id, role_id, assigned_by) VALUES (?, ?, ?, ?)',
+          [uuidv4(), req.params.id, roleId, req.user.id]
+        );
+      }
+    }
+
+    // Update groups
+    if (groups && Array.isArray(groups)) {
+      await pool.execute('DELETE FROM user_groups WHERE user_id = ?', [req.params.id]);
+      for (const groupId of groups) {
+        await pool.execute('INSERT INTO user_groups (user_id, group_id) VALUES (?, ?)', [req.params.id, groupId]);
+      }
+    }
+
+    await logActivity(req.user.id, 'update_user', 'user', req.params.id, { email }, req);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update user error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Reset user password (admin)
+app.post('/admin/users/:id/reset-password', authenticate, requirePermission('users.edit'), async (req, res) => {
+  try {
+    const [existing] = await pool.execute('SELECT email FROM users WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Użytkownik nie znaleziony' });
+
+    const newPassword = Math.random().toString(36).slice(-12);
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+
+    await pool.execute(
+      'UPDATE users SET password = ?, must_change_password = TRUE, failed_login_attempts = 0, is_blocked = FALSE WHERE id = ?',
+      [hashedPassword, req.params.id]
+    );
+
+    await logActivity(req.user.id, 'reset_password', 'user', req.params.id, { email: existing[0].email }, req);
+
+    res.json({ success: true, temporaryPassword: newPassword });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Block/unblock user
+app.post('/admin/users/:id/toggle-block', authenticate, requirePermission('users.edit'), async (req, res) => {
+  try {
+    const [existing] = await pool.execute('SELECT is_blocked FROM users WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Użytkownik nie znaleziony' });
+
+    const newStatus = !existing[0].is_blocked;
+    await pool.execute('UPDATE users SET is_blocked = ?, failed_login_attempts = 0 WHERE id = ?', [newStatus, req.params.id]);
+
+    await logActivity(req.user.id, newStatus ? 'block_user' : 'unblock_user', 'user', req.params.id, {}, req);
+
+    res.json({ success: true, isBlocked: newStatus });
+  } catch (err) {
+    console.error('Toggle block error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Delete user (requires superadmin)
+app.delete('/admin/users/:id', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    const [existing] = await pool.execute('SELECT email FROM users WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Użytkownik nie znaleziony' });
+
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Nie możesz usunąć własnego konta' });
+    }
+
+    await pool.execute('DELETE FROM users WHERE id = ?', [req.params.id]);
+    await logActivity(req.user.id, 'delete_user', 'user', req.params.id, { email: existing[0].email }, req);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// ============ ACTIVITY LOGS ============
+
+app.get('/admin/logs', authenticate, requirePermission('logs.view'), async (req, res) => {
+  const { user_id, action, entity_type, start_date, end_date, limit = 100, offset = 0 } = req.query;
+
+  try {
+    let query = `
+      SELECT al.*, u.email as user_email 
+      FROM activity_logs al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (user_id) {
+      query += ' AND al.user_id = ?';
+      params.push(user_id);
+    }
+    if (action) {
+      query += ' AND al.action = ?';
+      params.push(action);
+    }
+    if (entity_type) {
+      query += ' AND al.entity_type = ?';
+      params.push(entity_type);
+    }
+    if (start_date) {
+      query += ' AND al.created_at >= ?';
+      params.push(start_date);
+    }
+    if (end_date) {
+      query += ' AND al.created_at <= ?';
+      params.push(end_date);
+    }
+
+    query += ' ORDER BY al.created_at DESC LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), parseInt(offset));
+
+    const [logs] = await pool.execute(query, params);
+
+    // Get total count
+    let countQuery = 'SELECT COUNT(*) as total FROM activity_logs WHERE 1=1';
+    const countParams = [];
+    if (user_id) { countQuery += ' AND user_id = ?'; countParams.push(user_id); }
+    if (action) { countQuery += ' AND action = ?'; countParams.push(action); }
+    if (entity_type) { countQuery += ' AND entity_type = ?'; countParams.push(entity_type); }
+    
+    const [[{ total }]] = await pool.execute(countQuery, countParams);
+
+    res.json({ logs, total, limit: parseInt(limit), offset: parseInt(offset) });
+  } catch (err) {
+    console.error('Get logs error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
 });
 
 // ============ USER PROFILE ROUTES ============

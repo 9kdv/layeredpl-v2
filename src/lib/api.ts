@@ -315,6 +315,100 @@ class ApiService {
   async getPublicStats() {
     return this.request<PublicStats>('/stats/public');
   }
+
+  // ============ ADMIN USERS & ROLES ============
+
+  async getAdminUsers() {
+    return this.request<AdminUserData[]>('/admin/users');
+  }
+
+  async getAdminUser(id: string) {
+    return this.request<AdminUserData>(`/admin/users/${id}`);
+  }
+
+  async createAdminUser(data: CreateUserPayload) {
+    return this.request<{ success: boolean; id: string; tempPassword?: string }>('/admin/users', {
+      method: 'POST',
+      body: data,
+    });
+  }
+
+  async updateAdminUser(id: string, data: UpdateUserPayload) {
+    return this.request<{ success: boolean }>(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: data,
+    });
+  }
+
+  async toggleBlockUser(id: string) {
+    return this.request<{ success: boolean; isBlocked: boolean }>(`/admin/users/${id}/toggle-block`, {
+      method: 'POST',
+    });
+  }
+
+  async resetUserPassword(id: string) {
+    return this.request<{ success: boolean; temporaryPassword: string }>(`/admin/users/${id}/reset-password`, {
+      method: 'POST',
+    });
+  }
+
+  async deleteAdminUser(id: string) {
+    return this.request<{ success: boolean }>(`/admin/users/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Roles
+  async getRoles() {
+    return this.request<RoleData[]>('/admin/roles');
+  }
+
+  async createRole(data: CreateRolePayload) {
+    return this.request<RoleData>('/admin/roles', {
+      method: 'POST',
+      body: data,
+    });
+  }
+
+  async updateRole(id: string, data: UpdateRolePayload) {
+    return this.request<RoleData>(`/admin/roles/${id}`, {
+      method: 'PUT',
+      body: data,
+    });
+  }
+
+  async deleteRole(id: string) {
+    return this.request<{ success: boolean }>(`/admin/roles/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Permissions
+  async getPermissions() {
+    return this.request<PermissionData[]>('/admin/permissions');
+  }
+
+  // Groups
+  async getGroups() {
+    return this.request<GroupData[]>('/admin/groups');
+  }
+
+  async createGroup(data: Partial<GroupData>) {
+    return this.request<GroupData>('/admin/groups', {
+      method: 'POST',
+      body: data,
+    });
+  }
+
+  // Activity Logs
+  async getActivityLogs(params?: { user_id?: string; action?: string; limit?: number; offset?: number }) {
+    const query = new URLSearchParams();
+    if (params?.user_id) query.set('user_id', params.user_id);
+    if (params?.action) query.set('action', params.action);
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.offset) query.set('offset', params.offset.toString());
+    return this.request<{ logs: ActivityLogData[]; total: number }>(`/admin/logs?${query.toString()}`);
+  }
 }
 
 // Types
@@ -435,6 +529,100 @@ export interface InPostLocker {
   city: string;
   latitude: number;
   longitude: number;
+}
+
+// Admin User Types
+export interface AdminUserData {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  is_active: boolean;
+  is_blocked: boolean;
+  must_change_password?: boolean;
+  last_login_at?: string;
+  created_at: string;
+  roles: RoleData[];
+  groups: GroupData[];
+  orderCount?: number;
+}
+
+export interface RoleData {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  priority: number;
+  is_system: boolean;
+  permissions?: PermissionData[];
+  created_at?: string;
+}
+
+export interface PermissionData {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  category: string;
+}
+
+export interface GroupData {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string;
+  memberCount?: number;
+}
+
+export interface ActivityLogData {
+  id: string;
+  user_id?: string;
+  user_email?: string;
+  action: string;
+  entity_type?: string;
+  entity_id?: string;
+  details?: Record<string, unknown>;
+  ip_address?: string;
+  created_at: string;
+}
+
+// Payload types for API calls (separate from response types)
+export interface CreateUserPayload {
+  email: string;
+  password?: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  roles?: string[];
+  groups?: string[];
+}
+
+export interface UpdateUserPayload {
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  is_active?: boolean;
+  is_blocked?: boolean;
+  must_change_password?: boolean;
+  roles?: string[];
+  groups?: string[];
+}
+
+export interface CreateRolePayload {
+  name: string;
+  display_name: string;
+  description?: string;
+  priority?: number;
+  permissions?: string[];
+}
+
+export interface UpdateRolePayload {
+  display_name?: string;
+  description?: string;
+  priority?: number;
+  permissions?: string[];
 }
 
 export { ORDER_STATUS_LABELS };
