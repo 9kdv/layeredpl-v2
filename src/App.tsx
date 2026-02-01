@@ -36,11 +36,11 @@ import {
   ProductionPage,
   MaterialsPage,
   PrintersPage,
-  UsersPage,
   ReportsPage,
   ReturnsPage,
   SettingsPage,
 } from "./pages/admin/PlaceholderPages";
+import UsersPage from "./pages/admin/UsersPage";
 
 import favicon from "/favicon.svg";
 
