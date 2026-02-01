@@ -3996,6 +3996,38 @@ app.get('/checkout/config', (req, res) => {
   });
 });
 
+// ============ NOTIFICATIONS ============
+
+app.get('/admin/notifications', authenticate, async (req, res) => {
+  try {
+    const [notifications] = await pool.execute(
+      'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      [req.user.id]
+    );
+    res.json(notifications);
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.put('/admin/notifications/:id/read', authenticate, async (req, res) => {
+  try {
+    await pool.execute('UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.put('/admin/notifications/read-all', authenticate, async (req, res) => {
+  try {
+    await pool.execute('UPDATE notifications SET is_read = TRUE WHERE user_id = ?', [req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
 // ============ PUBLIC STATS ============
 
 app.get('/stats/public', async (req, res) => {
