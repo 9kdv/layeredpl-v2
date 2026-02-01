@@ -30,16 +30,14 @@ import AdminLayout from "./pages/admin/AdminLayout";
 import DashboardPage from "./pages/admin/DashboardPage";
 import OrdersPage from "./pages/admin/OrdersPage";
 import ProductsPage from "./pages/admin/ProductsPage";
-import {
-  PromotionsPage,
-  MessagesPage,
-  ProductionPage,
-  MaterialsPage,
-  PrintersPage,
-  ReportsPage,
-  ReturnsPage,
-  SettingsPage,
-} from "./pages/admin/PlaceholderPages";
+import PromotionsPage from "./pages/admin/PromotionsPage";
+import MessagesPage from "./pages/admin/MessagesPage";
+import ProductionPage from "./pages/admin/ProductionPage";
+import MaterialsPage from "./pages/admin/MaterialsPage";
+import PrintersPage from "./pages/admin/PrintersPage";
+import ReportsPage from "./pages/admin/ReportsPage";
+import ReturnsPage from "./pages/admin/ReturnsPage";
+import SettingsPage from "./pages/admin/SettingsPage";
 import UsersPage from "./pages/admin/UsersPage";
 
 import favicon from "/favicon.svg";
