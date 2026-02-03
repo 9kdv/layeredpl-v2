@@ -366,7 +366,7 @@ export default function UsersPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium">{role.display_name}</h4>
-                        {role.is_system && (
+                        {!!role.is_system && (
                           <Badge variant="secondary" className="text-xs">Systemowa</Badge>
                         )}
                         <Badge variant="outline" className="text-xs">Priorytet: {role.priority}</Badge>

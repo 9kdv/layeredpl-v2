@@ -115,45 +115,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Alerts */}
-      {(stats.pendingOrders > 0 || stats.awaitingInfoOrders) && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {stats.pendingOrders > 0 && (
-            <Card className="border-yellow-500/30 bg-yellow-500/5">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="p-3 bg-yellow-500/10 rounded-xl">
-                  <Clock className="h-6 w-6 text-yellow-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Oczekujące zamówienia</p>
-                  <p className="text-sm text-muted-foreground">{stats.pendingOrders} zamówień wymaga uwagi</p>
-                </div>
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/admin/orders?status=pending">Zobacz</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-          
-          {stats.awaitingInfoOrders && stats.awaitingInfoOrders > 0 && (
-            <Card className="border-orange-500/30 bg-orange-500/5">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="p-3 bg-orange-500/10 rounded-xl">
-                  <AlertTriangle className="h-6 w-6 text-orange-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Wymagają kontaktu z klientem</p>
-                  <p className="text-sm text-muted-foreground">{stats.awaitingInfoOrders} zamówień czeka</p>
-                </div>
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/admin/orders?status=awaiting_info">Zobacz</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
       {/* Main Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>

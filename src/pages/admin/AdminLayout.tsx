@@ -76,7 +76,7 @@ function AdminSidebar() {
     <Sidebar collapsible="icon" className="border-r border-border">
       <div className="h-16 flex items-center px-4 border-b border-border">
         <Link to="/admin" className="flex items-center gap-3">
-          <img src="/logo-white.png" alt="layered.pl" className="h-8" />
+          <img src="/favicon.svg" alt="layered.pl" className="h-8" />
           {!collapsed && <span className="text-lg font-bold tracking-tighter uppercase">layered</span>}
         </Link>
       </div>

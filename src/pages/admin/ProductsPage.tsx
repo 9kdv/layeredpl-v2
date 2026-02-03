@@ -324,8 +324,8 @@ export default function ProductsPage() {
 
               {/* Badges */}
               <div className="absolute top-2 left-2 flex gap-1">
-                {product.featured && (
-                  <Badge className="bg-primary">Wyróżniony</Badge>
+                {!!product.featured && (
+                  <Badge variant="outline" className="bg-primary/80">Wyróżniony</Badge>
                 )}
                 {product.customization && (
                   <Badge variant="outline" className="bg-background/80">Personalizacja</Badge>
