@@ -201,8 +201,8 @@ export default function UsersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Użytkownicy i role</h1>
-          <p className="text-muted-foreground">Zarządzaj użytkownikami, rolami i uprawnieniami</p>
+          <h1 className="text-2xl font-bold">Użytkownicy i grupy</h1>
+          <p className="text-muted-foreground">Zarządzaj użytkownikami, grupami i uprawnieniami</p>
         </div>
       </div>
 
@@ -214,11 +214,7 @@ export default function UsersPage() {
           </TabsTrigger>
           <TabsTrigger value="roles" className="gap-2">
             <Shield className="h-4 w-4" />
-            Role ({roles.length})
-          </TabsTrigger>
-          <TabsTrigger value="groups" className="gap-2">
-            <Users className="h-4 w-4" />
-            Grupy ({groups.length})
+            Grupy ({roles.length})
           </TabsTrigger>
         </TabsList>
 
@@ -356,10 +352,10 @@ export default function UsersPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle>Role systemowe</CardTitle>
+                <CardTitle>Grupy systemowe</CardTitle>
                 <Button onClick={() => setRoleDialog({ open: true })} className="gap-2">
                   <Plus className="h-4 w-4" />
-                  Dodaj rolę
+                  Dodaj grupę
                 </Button>
               </div>
             </CardHeader>
@@ -414,37 +410,6 @@ export default function UsersPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="groups" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle>Grupy</CardTitle>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Dodaj grupę
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                {groups.map((group) => (
-                  <Card key={group.id}>
-                    <CardContent className="pt-6">
-                      <h4 className="font-medium">{group.display_name}</h4>
-                      <p className="text-sm text-muted-foreground mt-1">{group.description}</p>
-                      <div className="mt-4 flex items-center justify-between">
-                        <Badge variant="outline">{group.memberCount || 0} członków</Badge>
-                        <Button variant="ghost" size="sm">
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       <UserEditDialog 

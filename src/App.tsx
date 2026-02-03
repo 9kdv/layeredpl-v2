@@ -39,6 +39,7 @@ import ReportsPage from "./pages/admin/ReportsPage";
 import ReturnsPage from "./pages/admin/ReturnsPage";
 import SettingsPage from "./pages/admin/SettingsPage";
 import UsersPage from "./pages/admin/UsersPage";
+import LogsPage from "./pages/admin/LogsPage";
 
 import favicon from "/favicon.svg";
 
@@ -146,6 +147,7 @@ const PageWrapper = () => {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="returns" element={<ReturnsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="logs" element={<LogsPage />} />
         </Route>
         
         <Route path="*" element={<NotFound />} />

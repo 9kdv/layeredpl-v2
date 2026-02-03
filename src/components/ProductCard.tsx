@@ -30,6 +30,8 @@ export function ProductCard({ product }: ProductCardProps) {
     }
   };
 
+  const hasCustomization = product.customization && product.customization.options && product.customization.options.length > 0;
+
   return (
     <Link to={`/produkt/${product.id}`} className="group block">
       <div className="relative aspect-square bg-card overflow-hidden rounded-lg mb-4">
@@ -61,6 +63,13 @@ export function ProductCard({ product }: ProductCardProps) {
         {product.availability === 'unavailable' && (
           <span className="absolute top-3 left-3 bg-red-500/90 text-white text-xs font-medium px-2 py-1 rounded">
             Niedostępny
+          </span>
+        )}
+
+        {/* Customization badge */}
+        {hasCustomization && (
+          <span className="absolute top-3 right-3 bg-primary/90 text-primary-foreground text-xs font-medium px-2 py-1 rounded">
+            Personalizacja
           </span>
         )}
       </div>

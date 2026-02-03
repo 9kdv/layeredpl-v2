@@ -61,6 +61,7 @@ export const promoApi = {
   update: (id: string, data: Partial<PromoCode>) => request<PromoCode>(`/admin/promo-codes/${id}`, { method: 'PUT', body: data }),
   delete: (id: string) => request<{ success: boolean }>(`/admin/promo-codes/${id}`, { method: 'DELETE' }),
   duplicate: (id: string) => request<PromoCode>(`/admin/promo-codes/${id}/duplicate`, { method: 'POST' }),
+  validate: (code: string, orderTotal: number) => request<{ valid: boolean; discount: number; type: string; message?: string }>(`/promo-codes/validate`, { method: 'POST', body: { code, orderTotal } }),
 };
 
 // ============ MESSAGES ============
@@ -102,6 +103,8 @@ export const messagesApi = {
     return request<Message[]>(`/admin/messages?${query.toString()}`);
   },
   get: (id: string) => request<Message>(`/admin/messages/${id}`),
+  create: (data: { sender_name: string; sender_email: string; subject: string; content: string }) => 
+    request<{ success: boolean; messageId: string }>('/messages', { method: 'POST', body: data }),
   update: (id: string, data: Partial<Message>) => request<{ success: boolean }>(`/admin/messages/${id}`, { method: 'PUT', body: data }),
   reply: (id: string, content: string, subject?: string) => request<{ success: boolean; replyId: string }>(`/admin/messages/${id}/reply`, { method: 'POST', body: { content, subject } }),
   getTemplates: () => request<MessageTemplate[]>('/admin/message-templates'),
@@ -202,6 +205,8 @@ export interface Location {
 export const locationsApi = {
   getAll: () => request<Location[]>('/admin/locations'),
   create: (data: Partial<Location>) => request<Location>('/admin/locations', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<Location>) => request<{ success: boolean }>(`/admin/locations/${id}`, { method: 'PUT', body: data }),
+  delete: (id: string) => request<{ success: boolean }>(`/admin/locations/${id}`, { method: 'DELETE' }),
 };
 
 // ============ RETURNS ============
@@ -252,9 +257,19 @@ export interface Settings {
   [key: string]: string | number | boolean | unknown[];
 }
 
+export interface Review {
+  id: string;
+  name: string;
+  text: string;
+  rating: number;
+  date: string;
+  verified: boolean;
+}
+
 export const settingsApi = {
   getAll: () => request<Settings>('/admin/settings'),
   update: (data: Partial<Settings>) => request<{ success: boolean }>('/admin/settings', { method: 'PUT', body: data }),
+  getPublic: () => request<Settings>('/settings/public'),
 };
 
 // ============ REPORTS ============
@@ -275,7 +290,7 @@ export const reportsApi = {
     if (params?.group_by) query.set('group_by', params.group_by);
     return request<SalesReport[]>(`/admin/reports/sales?${query.toString()}`);
   },
-  getProducts: () => request<{ id: string; name: string; price: number }[]>('/admin/reports/products'),
+  getProducts: () => request<{ id: string; name: string; price: number; total_sold: number; revenue: number }[]>('/admin/reports/products'),
 };
 
 // ============ NOTIFICATIONS ============
@@ -297,19 +312,60 @@ export const notificationsApi = {
   markAllAsRead: () => request<{ success: boolean }>('/admin/notifications/read-all', { method: 'PUT' }),
 };
 
+// ============ ACTIVITY LOGS ============
+
+export interface ActivityLog {
+  id: string;
+  user_id: string | null;
+  user_email?: string;
+  action: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  details: Record<string, unknown> | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export const logsApi = {
+  getAll: (params?: { user_id?: string; action?: string; entity_type?: string; start_date?: string; end_date?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.user_id) query.set('user_id', params.user_id);
+    if (params?.action) query.set('action', params.action);
+    if (params?.entity_type) query.set('entity_type', params.entity_type);
+    if (params?.start_date) query.set('start_date', params.start_date);
+    if (params?.end_date) query.set('end_date', params.end_date);
+    if (params?.limit) query.set('limit', params.limit.toString());
+    return request<ActivityLog[]>(`/admin/logs?${query.toString()}`);
+  },
+  export: (format: 'csv' | 'json') => {
+    const token = getToken();
+    return fetch(`${API_BASE}/admin/logs/export?format=${format}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(r => r.blob());
+  }
+};
+
 // ============ ORDERS EXPORT ============
 
 export const ordersApi = {
-  export: async (params?: { status?: string; start_date?: string; end_date?: string }) => {
+  getAll: (params?: { status?: string; start_date?: string; end_date?: string }) => {
     const query = new URLSearchParams();
     if (params?.status) query.set('status', params.status);
     if (params?.start_date) query.set('start_date', params.start_date);
     if (params?.end_date) query.set('end_date', params.end_date);
+    return request<unknown[]>(`/orders?${query.toString()}`);
+  },
+  export: async (params?: { status?: string; start_date?: string; end_date?: string; format?: 'csv' | 'json' }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.start_date) query.set('start_date', params.start_date);
+    if (params?.end_date) query.set('end_date', params.end_date);
+    query.set('format', params?.format || 'csv');
     
     const token = getToken();
-    const response = await fetch(`${API_BASE}/orders?${query.toString()}`, {
+    const response = await fetch(`${API_BASE}/admin/orders/export?${query.toString()}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-    return response.json();
+    return response.blob();
   }
 };

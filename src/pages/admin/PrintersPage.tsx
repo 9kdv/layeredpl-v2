@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Printer, Plus, Search, CheckCircle, AlertCircle, 
   Settings, Power, Edit2, Trash2, MapPin, User
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -54,7 +55,7 @@ export default function PrintersPage() {
 
   const { data: users = [] } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: api.getAdminUsers
+    queryFn: () => api.getAdminUsers().catch(() => [])
   });
 
   const createMutation = useMutation({
@@ -100,7 +101,11 @@ export default function PrintersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="space-y-6"
+    >
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Drukarki</h1>
@@ -114,32 +119,26 @@ export default function PrintersPage() {
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Wszystkie</p>
-            <p className="text-2xl font-bold">{printers.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Dostępne</p>
-            <p className="text-2xl font-bold text-green-500">{availableCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Zajęte</p>
-            <p className="text-2xl font-bold text-purple-500">{busyCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">W serwisie</p>
-            <p className="text-2xl font-bold text-yellow-500">
-              {printers.filter(p => p.status === 'maintenance').length}
-            </p>
-          </CardContent>
-        </Card>
+        {[
+          { label: 'Wszystkie', value: printers.length },
+          { label: 'Dostępne', value: availableCount, color: 'text-green-500' },
+          { label: 'Zajęte', value: busyCount, color: 'text-purple-500' },
+          { label: 'W serwisie', value: printers.filter(p => p.status === 'maintenance').length, color: 'text-yellow-500' }
+        ].map((stat, idx) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.05 }}
+          >
+            <Card className="hover:border-primary/30 transition-colors">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className={`text-2xl font-bold ${stat.color || ''}`}>{stat.value}</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
       </div>
 
       {/* Search */}
@@ -159,71 +158,78 @@ export default function PrintersPage() {
 
       {/* Printers Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredPrinters.map((printer) => {
+        {filteredPrinters.map((printer, idx) => {
           const statusConfig = STATUS_CONFIG[printer.status];
           const StatusIcon = statusConfig.icon;
 
           return (
-            <Card key={printer.id} className={`border ${statusConfig.color.split(' ')[2] || ''}`}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-3 rounded-xl ${statusConfig.color}`}>
-                      <Printer className="h-6 w-6" />
+            <motion.div
+              key={printer.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: idx * 0.05 }}
+            >
+              <Card className={`border hover:shadow-lg transition-all ${statusConfig.color.split(' ')[2] || ''}`}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-3 rounded-xl ${statusConfig.color}`}>
+                        <Printer className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{printer.name}</CardTitle>
+                        {printer.model && (
+                          <p className="text-sm text-muted-foreground">{printer.model}</p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-lg">{printer.name}</CardTitle>
-                      {printer.model && (
-                        <p className="text-sm text-muted-foreground">{printer.model}</p>
-                      )}
-                    </div>
+                    <Badge variant="outline" className={statusConfig.color}>
+                      {statusConfig.label}
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className={statusConfig.color}>
-                    {statusConfig.label}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-2 text-sm">
-                  {printer.location_name && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <MapPin className="h-4 w-4" />
-                      {printer.location_name}
-                    </div>
-                  )}
-                  {printer.assigned_email && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <User className="h-4 w-4" />
-                      {printer.assigned_email}
-                    </div>
-                  )}
-                  {printer.notes && (
-                    <p className="text-muted-foreground bg-muted/50 p-2 rounded">
-                      {printer.notes}
-                    </p>
-                  )}
-                </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2 text-sm">
+                    {printer.location_name && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                        {printer.location_name}
+                      </div>
+                    )}
+                    {printer.assigned_email && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <User className="h-4 w-4" />
+                        {printer.assigned_email}
+                      </div>
+                    )}
+                    {printer.notes && (
+                      <p className="text-muted-foreground bg-muted/50 p-2 rounded">
+                        {printer.notes}
+                      </p>
+                    )}
+                  </div>
 
-                <div className="flex gap-2 pt-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="flex-1"
-                    onClick={() => setPrinterDialog({ open: true, printer })}
-                  >
-                    <Edit2 className="h-4 w-4 mr-1" />
-                    Edytuj
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setDeleteDialog({ open: true, id: printer.id, name: printer.name })}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="flex gap-2 pt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => setPrinterDialog({ open: true, printer })}
+                    >
+                      <Edit2 className="h-4 w-4 mr-1" />
+                      Edytuj
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setDeleteDialog({ open: true, id: printer.id, name: printer.name })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
           );
         })}
 
@@ -273,7 +279,7 @@ export default function PrintersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </motion.div>
   );
 }
 
@@ -303,7 +309,7 @@ function PrinterDialog({
     notes: '',
   });
 
-  useState(() => {
+  useEffect(() => {
     if (open && printer) {
       setFormData({
         name: printer.name,
@@ -323,7 +329,7 @@ function PrinterDialog({
         notes: '',
       });
     }
-  });
+  }, [open, printer]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -370,14 +376,14 @@ function PrinterDialog({
             <div>
               <Label>Lokalizacja</Label>
               <Select 
-                value={formData.location_id || ''} 
-                onValueChange={(v) => setFormData({ ...formData, location_id: v || null })}
+                value={formData.location_id || 'none'} 
+                onValueChange={(v) => setFormData({ ...formData, location_id: v === 'none' ? null : v })}
               >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Wybierz" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nieprzypisana</SelectItem>
+                  <SelectItem value="none">Nieprzypisana</SelectItem>
                   {locations.map(loc => (
                     <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                   ))}
@@ -389,14 +395,14 @@ function PrinterDialog({
           <div>
             <Label>Przypisana do</Label>
             <Select 
-              value={formData.assigned_to || ''} 
-              onValueChange={(v) => setFormData({ ...formData, assigned_to: v || null })}
+              value={formData.assigned_to || 'none'} 
+              onValueChange={(v) => setFormData({ ...formData, assigned_to: v === 'none' ? null : v })}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Wybierz osobę" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Nieprzypisana</SelectItem>
+                <SelectItem value="none">Nieprzypisana</SelectItem>
                 {users.map(user => (
                   <SelectItem key={user.id} value={user.id}>{user.email}</SelectItem>
                 ))}
