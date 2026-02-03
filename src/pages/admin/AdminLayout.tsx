@@ -18,8 +18,7 @@ import {
   RotateCcw,
   Wrench,
   FileText,
-  Check,
-  X
+  MapPin
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -55,9 +54,9 @@ const mainMenuItems = [
 ];
 
 const productionMenuItems = [
+  { title: 'Mapa i Lokalizacje', url: '/admin/locations', icon: MapPin },
   { title: 'Kolejka produkcji', url: '/admin/production', icon: Printer },
-  { title: 'Materiały', url: '/admin/materials', icon: Boxes },
-  { title: 'Drukarki', url: '/admin/printers', icon: Wrench },
+  { title: 'Materiały i Drukarki', url: '/admin/resources', icon: Boxes },
 ];
 
 const systemMenuItems = [
@@ -163,7 +162,7 @@ function NotificationsPopover() {
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
     queryFn: notificationsApi.getAll,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
 
   const markAsReadMutation = useMutation({
@@ -281,7 +280,6 @@ function AdminHeader() {
     navigate('/');
   };
 
-  // Get current page title
   const getPageTitle = () => {
     const path = location.pathname;
     if (path === '/admin') return 'Dashboard';
@@ -289,7 +287,9 @@ function AdminHeader() {
     if (path.includes('/products')) return 'Produkty';
     if (path.includes('/promotions')) return 'Promocje';
     if (path.includes('/messages')) return 'Wiadomości';
+    if (path.includes('/locations')) return 'Mapa i Lokalizacje';
     if (path.includes('/production')) return 'Kolejka produkcji';
+    if (path.includes('/resources')) return 'Materiały i Drukarki';
     if (path.includes('/materials')) return 'Materiały';
     if (path.includes('/printers')) return 'Drukarki';
     if (path.includes('/users')) return 'Użytkownicy';

@@ -40,6 +40,8 @@ import ReturnsPage from "./pages/admin/ReturnsPage";
 import SettingsPage from "./pages/admin/SettingsPage";
 import UsersPage from "./pages/admin/UsersPage";
 import LogsPage from "./pages/admin/LogsPage";
+import LocationsPage from "./pages/admin/LocationsPage";
+import ResourcesPage from "./pages/admin/ResourcesPage";
 
 import favicon from "/favicon.svg";
 
@@ -140,7 +142,9 @@ const PageWrapper = () => {
           <Route path="products" element={<ProductsPage />} />
           <Route path="promotions" element={<PromotionsPage />} />
           <Route path="messages" element={<MessagesPage />} />
+          <Route path="locations" element={<LocationsPage />} />
           <Route path="production" element={<ProductionPage />} />
+          <Route path="resources" element={<ResourcesPage />} />
           <Route path="materials" element={<MaterialsPage />} />
           <Route path="printers" element={<PrintersPage />} />
           <Route path="users" element={<UsersPage />} />
