@@ -444,10 +444,16 @@ async function initDatabase() {
       name VARCHAR(100) NOT NULL,
       description TEXT,
       address TEXT,
+      latitude DECIMAL(10, 8),
+      longitude DECIMAL(11, 8),
       is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  
+  // Add missing columns
+  try { await pool.execute(`ALTER TABLE locations ADD COLUMN latitude DECIMAL(10, 8)`); } catch (e) {}
+  try { await pool.execute(`ALTER TABLE locations ADD COLUMN longitude DECIMAL(11, 8)`); } catch (e) {}
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS printers (

@@ -189,6 +189,7 @@ export const materialsApi = {
   getAll: () => request<Material[]>('/admin/materials'),
   create: (data: Partial<Material>) => request<Material>('/admin/materials', { method: 'POST', body: data }),
   update: (id: string, data: Partial<Material>) => request<{ success: boolean }>(`/admin/materials/${id}`, { method: 'PUT', body: data }),
+  delete: (id: string) => request<{ success: boolean }>(`/admin/materials/${id}`, { method: 'DELETE' }),
 };
 
 // ============ LOCATIONS ============
@@ -196,8 +197,10 @@ export const materialsApi = {
 export interface Location {
   id: string;
   name: string;
-  description: string;
-  address: string;
+  description?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   is_active: boolean;
   created_at: string;
 }

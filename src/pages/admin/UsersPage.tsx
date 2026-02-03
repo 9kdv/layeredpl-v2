@@ -4,6 +4,7 @@ import {
   Users, Plus, Search, Shield, UserPlus, MoreHorizontal, 
   Check, X, Lock, Unlock, Key, Trash2, Edit2 
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +40,6 @@ import {
   api, 
   AdminUserData, 
   RoleData, 
-  GroupData, 
   PermissionData,
   CreateUserPayload,
   UpdateUserPayload,
@@ -81,11 +81,6 @@ export default function UsersPage() {
   const { data: permissions = [] } = useQuery({
     queryKey: ['admin-permissions'],
     queryFn: () => api.getPermissions()
-  });
-
-  const { data: groups = [] } = useQuery({
-    queryKey: ['admin-groups'],
-    queryFn: () => api.getGroups()
   });
 
   const createUserMutation = useMutation({
@@ -143,7 +138,7 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-roles'] });
       setRoleDialog({ open: false });
-      toast({ title: 'Rola utworzona' });
+      toast({ title: 'Grupa utworzona' });
     },
     onError: (err: Error) => toast({ title: 'Błąd', description: err.message, variant: 'destructive' })
   });
@@ -153,7 +148,7 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-roles'] });
       setRoleDialog({ open: false });
-      toast({ title: 'Rola zaktualizowana' });
+      toast({ title: 'Grupa zaktualizowana' });
     },
     onError: (err: Error) => toast({ title: 'Błąd', description: err.message, variant: 'destructive' })
   });
@@ -163,7 +158,7 @@ export default function UsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-roles'] });
       setDeleteDialog({ open: false, type: '', id: '', name: '' });
-      toast({ title: 'Rola usunięta' });
+      toast({ title: 'Grupa usunięta' });
     },
     onError: (err: Error) => toast({ title: 'Błąd', description: err.message, variant: 'destructive' })
   });
@@ -198,11 +193,15 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Użytkownicy i grupy</h1>
-          <p className="text-muted-foreground">Zarządzaj użytkownikami, grupami i uprawnieniami</p>
+          <p className="text-muted-foreground">Zarządzaj użytkownikami i grupami uprawnień</p>
         </div>
       </div>
 
@@ -242,7 +241,7 @@ export default function UsersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Użytkownik</TableHead>
-                    <TableHead>Role</TableHead>
+                    <TableHead>Grupy</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Ostatnie logowanie</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
@@ -272,7 +271,7 @@ export default function UsersPage() {
                             </Badge>
                           ))}
                           {user.roles.length === 0 && (
-                            <Badge variant="outline">Brak roli</Badge>
+                            <Badge variant="outline">Brak grupy</Badge>
                           )}
                         </div>
                       </TableCell>
@@ -362,7 +361,12 @@ export default function UsersPage() {
             <CardContent>
               <div className="grid gap-4">
                 {roles.map((role) => (
-                  <div key={role.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <motion.div 
+                    key={role.id} 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors"
+                  >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium">{role.display_name}</h4>
@@ -403,20 +407,18 @@ export default function UsersPage() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
-
       </Tabs>
 
       <UserEditDialog 
         open={userDialog.open}
         user={userDialog.user}
         roles={roles}
-        groups={groups}
         onClose={() => setUserDialog({ open: false })}
         onSave={handleSaveUser}
         isLoading={createUserMutation.isPending || updateUserMutation.isPending}
@@ -437,7 +439,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Potwierdź usunięcie</DialogTitle>
             <DialogDescription>
-              Czy na pewno chcesz usunąć {deleteDialog.type === 'user' ? 'użytkownika' : 'rolę'} <strong>{deleteDialog.name}</strong>?
+              Czy na pewno chcesz usunąć {deleteDialog.type === 'user' ? 'użytkownika' : 'grupę'} <strong>{deleteDialog.name}</strong>?
               Tej operacji nie można cofnąć.
             </DialogDescription>
           </DialogHeader>
@@ -466,7 +468,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Tymczasowe hasło</DialogTitle>
             <DialogDescription>
-              Hasło dla użytkownika <strong>{passwordDialog.email}</strong> zostało zresetowane.
+              Hasło dla użytkownika zostało zresetowane.
               Przekaż to hasło użytkownikowi - będzie musiał je zmienić przy pierwszym logowaniu.
             </DialogDescription>
           </DialogHeader>
@@ -486,15 +488,15 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </motion.div>
   );
 }
 
+// User Edit Dialog - simplified without groups
 function UserEditDialog({ 
   open, 
   user, 
   roles, 
-  groups,
   onClose, 
   onSave,
   isLoading 
@@ -502,7 +504,6 @@ function UserEditDialog({
   open: boolean;
   user?: AdminUserData;
   roles: RoleData[];
-  groups: GroupData[];
   onClose: () => void;
   onSave: (data: CreateUserPayload | UpdateUserPayload) => void;
   isLoading: boolean;
@@ -515,8 +516,7 @@ function UserEditDialog({
     phone: '',
     is_active: true,
     is_blocked: false,
-    roles: [] as string[],
-    groups: [] as string[]
+    roles: [] as string[]
   });
 
   useEffect(() => {
@@ -529,8 +529,7 @@ function UserEditDialog({
         phone: user.phone || '',
         is_active: user.is_active,
         is_blocked: user.is_blocked,
-        roles: user.roles.map(r => r.id),
-        groups: user.groups.map(g => g.id)
+        roles: user.roles.map(r => r.id)
       });
     } else {
       setFormData({
@@ -541,8 +540,7 @@ function UserEditDialog({
         phone: '',
         is_active: true,
         is_blocked: false,
-        roles: [],
-        groups: []
+        roles: []
       });
     }
   }, [user, open]);
@@ -596,13 +594,13 @@ function UserEditDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Role</Label>
+            <Label>Grupy uprawnień</Label>
             <div className="flex flex-wrap gap-2">
               {roles.map(role => (
                 <Badge 
                   key={role.id}
                   variant={formData.roles.includes(role.id) ? 'default' : 'outline'}
-                  className="cursor-pointer"
+                  className="cursor-pointer transition-all hover:scale-105"
                   onClick={() => {
                     setFormData(f => ({
                       ...f,
@@ -613,28 +611,6 @@ function UserEditDialog({
                   }}
                 >
                   {role.display_name}
-                </Badge>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Grupy</Label>
-            <div className="flex flex-wrap gap-2">
-              {groups.map(group => (
-                <Badge 
-                  key={group.id}
-                  variant={formData.groups.includes(group.id) ? 'default' : 'outline'}
-                  className="cursor-pointer"
-                  onClick={() => {
-                    setFormData(f => ({
-                      ...f,
-                      groups: f.groups.includes(group.id) 
-                        ? f.groups.filter(g => g !== group.id)
-                        : [...f.groups, group.id]
-                    }));
-                  }}
-                >
-                  {group.display_name}
                 </Badge>
               ))}
             </div>
@@ -669,6 +645,7 @@ function UserEditDialog({
   );
 }
 
+// Role Edit Dialog (now called "Grupy" in UI)
 function RoleEditDialog({ 
   open, 
   role, 
@@ -742,7 +719,7 @@ function RoleEditDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{role ? 'Edytuj rolę' : 'Nowa rola'}</DialogTitle>
+          <DialogTitle>{role ? 'Edytuj grupę' : 'Nowa grupa'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -772,7 +749,7 @@ function RoleEditDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Priorytet (wyższy = ważniejsza rola)</Label>
+            <Label>Priorytet (wyższy = ważniejsza grupa)</Label>
             <Input 
               type="number"
               value={formData.priority}
@@ -783,7 +760,12 @@ function RoleEditDialog({
           <div className="space-y-4">
             <Label>Uprawnienia</Label>
             {Object.entries(permissionsByCategory).map(([category, perms]) => (
-              <div key={category} className="border rounded-lg p-4">
+              <motion.div 
+                key={category} 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="border rounded-lg p-4"
+              >
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-medium">{PERMISSION_CATEGORIES[category] || category}</h4>
                   <Button 
@@ -808,7 +790,7 @@ function RoleEditDialog({
                     </div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
