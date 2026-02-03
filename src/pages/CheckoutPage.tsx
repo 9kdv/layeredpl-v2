@@ -240,6 +240,84 @@ function InPostLockerInput({
   );
 }
 
+// Promo Code Input Component
+function PromoCodeInput({ 
+  orderTotal, 
+  onApply, 
+  onRemove 
+}: { 
+  orderTotal: number;
+  onApply: (discount: number, type: string) => void;
+  onRemove: () => void;
+}) {
+  const [code, setCode] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [appliedCode, setAppliedCode] = useState('');
+
+  const handleApply = async () => {
+    if (!code.trim()) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${import.meta.env.PROD ? '/api' : 'http://localhost:3001'}/promo-codes/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code.toUpperCase(), orderTotal })
+      });
+      const result = await response.json();
+      if (result.valid) {
+        onApply(result.discount, result.type);
+        setApplied(true);
+        setAppliedCode(code.toUpperCase());
+        toast.success(`Kod rabatowy zastosowany! Oszczędzasz ${result.discount.toFixed(2)} zł`);
+      } else {
+        toast.error(result.message || 'Nieprawidłowy kod rabatowy');
+      }
+    } catch (error) {
+      toast.error('Błąd weryfikacji kodu');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRemove = () => {
+    setApplied(false);
+    setAppliedCode('');
+    setCode('');
+    onRemove();
+  };
+
+  if (applied) {
+    return (
+      <div className="flex items-center justify-between p-3 bg-green-500/10 border border-green-500/30 rounded-lg mt-4">
+        <div className="flex items-center gap-2">
+          <Check className="w-4 h-4 text-green-500" />
+          <span className="text-sm font-medium text-green-500">Kod: {appliedCode}</span>
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleRemove} className="text-muted-foreground">
+          Usuń
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="flex gap-2">
+        <Input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="Kod rabatowy"
+          className="flex-1"
+        />
+        <Button variant="outline" onClick={handleApply} disabled={isLoading || !code.trim()}>
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Zastosuj'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { items, totalPrice, clearCart } = useCart();
@@ -254,6 +332,8 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isVerifyingLocker, setIsVerifyingLocker] = useState(false);
   const [saveAddress, setSaveAddress] = useState(false);
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoType, setPromoType] = useState<string | null>(null);
 
   // Form states
   const [useAccountData, setUseAccountData] = useState(true);
@@ -278,8 +358,9 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Calculate shipping cost
-  const shippingCost = deliveryMethod === 'inpost' ? 12.99 : (totalPrice >= 200 ? 0 : 15.99);
-  const finalTotal = totalPrice + shippingCost;
+  const baseShippingCost = deliveryMethod === 'inpost' ? 12.99 : (totalPrice >= 200 ? 0 : 15.99);
+  const shippingCost = promoType === 'free_shipping' ? 0 : baseShippingCost;
+  const finalTotal = totalPrice - promoDiscount + shippingCost;
 
   // Computed shipping address for order creation
   const getShippingAddress = (): ShippingAddress => {
@@ -710,14 +791,33 @@ export default function CheckoutPage() {
                 ))}
               </div>
 
+              {/* Promo Code */}
+              <PromoCodeInput 
+                orderTotal={totalPrice}
+                onApply={(discount, type) => {
+                  setPromoDiscount(discount);
+                  setPromoType(type);
+                }}
+                onRemove={() => {
+                  setPromoDiscount(0);
+                  setPromoType(null);
+                }}
+              />
+
               <div className="border-t border-border pt-4 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Produkty</span>
                   <span>{totalPrice.toFixed(2)} zł</span>
                 </div>
+                {promoDiscount > 0 && (
+                  <div className="flex justify-between text-green-500">
+                    <span>Rabat</span>
+                    <span>-{promoDiscount.toFixed(2)} zł</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Dostawa</span>
-                  <span>{shippingCost === 0 ? 'Gratis' : `${shippingCost.toFixed(2)} zł`}</span>
+                  <span>{promoType === 'free_shipping' ? 'Gratis (promocja)' : shippingCost === 0 ? 'Gratis' : `${shippingCost.toFixed(2)} zł`}</span>
                 </div>
                 <div className="flex justify-between font-semibold text-base pt-2 border-t border-border">
                   <span>Razem</span>

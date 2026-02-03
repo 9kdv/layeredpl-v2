@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Boxes, Plus, Search, AlertTriangle, CheckCircle, 
-  XCircle, Edit2, MapPin
+  XCircle, Edit2, MapPin, Trash2
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -42,6 +44,12 @@ const STATUS_CONFIG = {
   available: { label: 'Dostępny', color: 'text-green-500', icon: CheckCircle },
   low_stock: { label: 'Niski stan', color: 'text-yellow-500', icon: AlertTriangle },
   out_of_stock: { label: 'Brak', color: 'text-destructive', icon: XCircle },
+};
+
+const fadeIn = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -10 }
 };
 
 export default function MaterialsPage() {
@@ -106,7 +114,11 @@ export default function MaterialsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="space-y-6"
+    >
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Materiały</h1>
@@ -125,52 +137,61 @@ export default function MaterialsPage() {
       </div>
 
       {/* Alerts */}
-      {(lowStockCount > 0 || outOfStockCount > 0) && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {outOfStockCount > 0 && (
-            <Card className="border-destructive/30 bg-destructive/5">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="p-3 bg-destructive/10 rounded-xl">
-                  <XCircle className="h-6 w-6 text-destructive" />
-                </div>
-                <div>
-                  <p className="font-medium">Brak materiałów</p>
-                  <p className="text-sm text-muted-foreground">{outOfStockCount} materiałów wymaga uzupełnienia</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {lowStockCount > 0 && (
-            <Card className="border-yellow-500/30 bg-yellow-500/5">
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="p-3 bg-yellow-500/10 rounded-xl">
-                  <AlertTriangle className="h-6 w-6 text-yellow-500" />
-                </div>
-                <div>
-                  <p className="font-medium">Niski stan magazynowy</p>
-                  <p className="text-sm text-muted-foreground">{lowStockCount} materiałów ma niski stan</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+      <AnimatePresence>
+        {(lowStockCount > 0 || outOfStockCount > 0) && (
+          <motion.div {...fadeIn} className="grid gap-4 md:grid-cols-2">
+            {outOfStockCount > 0 && (
+              <Card className="border-destructive/30 bg-destructive/5">
+                <CardContent className="flex items-center gap-4 p-4">
+                  <div className="p-3 bg-destructive/10 rounded-xl">
+                    <XCircle className="h-6 w-6 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Brak materiałów</p>
+                    <p className="text-sm text-muted-foreground">{outOfStockCount} materiałów wymaga uzupełnienia</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {lowStockCount > 0 && (
+              <Card className="border-yellow-500/30 bg-yellow-500/5">
+                <CardContent className="flex items-center gap-4 p-4">
+                  <div className="p-3 bg-yellow-500/10 rounded-xl">
+                    <AlertTriangle className="h-6 w-6 text-yellow-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Niski stan magazynowy</p>
+                    <p className="text-sm text-muted-foreground">{lowStockCount} materiałów ma niski stan</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Wszystkie materiały</p>
-            <p className="text-2xl font-bold">{materials.length}</p>
-          </CardContent>
-        </Card>
-        {MATERIAL_TYPES.slice(0, 3).map(type => (
-          <Card key={type}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">{type}</p>
-              <p className="text-2xl font-bold">{materials.filter(m => m.type === type).length}</p>
-            </CardContent>
-          </Card>
+        {[
+          { label: 'Wszystkie materiały', value: materials.length },
+          ...MATERIAL_TYPES.slice(0, 3).map(type => ({
+            label: type,
+            value: materials.filter(m => m.type === type).length
+          }))
+        ].map((stat, idx) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.05 }}
+          >
+            <Card className="hover:border-primary/30 transition-colors">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="text-2xl font-bold">{stat.value}</p>
+              </CardContent>
+            </Card>
+          </motion.div>
         ))}
       </div>
 
@@ -218,7 +239,7 @@ export default function MaterialsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMaterials.map((material) => {
+              {filteredMaterials.map((material, idx) => {
                 const statusConfig = STATUS_CONFIG[material.status];
                 const StatusIcon = statusConfig.icon;
                 const stockPercent = material.min_stock_level > 0 
@@ -226,7 +247,13 @@ export default function MaterialsPage() {
                   : 100;
 
                 return (
-                  <TableRow key={material.id}>
+                  <motion.tr
+                    key={material.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: idx * 0.02 }}
+                    className="border-b transition-colors hover:bg-muted/50"
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div 
@@ -272,7 +299,7 @@ export default function MaterialsPage() {
                         <Edit2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
-                  </TableRow>
+                  </motion.tr>
                 );
               })}
               {filteredMaterials.length === 0 && (
@@ -311,7 +338,7 @@ export default function MaterialsPage() {
         onCreate={(data) => createLocationMutation.mutate(data)}
         isLoading={createLocationMutation.isPending}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -342,7 +369,7 @@ function MaterialDialog({
     notes: '',
   });
 
-  useState(() => {
+  useEffect(() => {
     if (open && material) {
       setFormData({
         name: material.name,
@@ -368,7 +395,7 @@ function MaterialDialog({
         notes: '',
       });
     }
-  });
+  }, [open, material]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -433,14 +460,14 @@ function MaterialDialog({
           <div>
             <Label>Lokalizacja</Label>
             <Select 
-              value={formData.location_id || ''} 
-              onValueChange={(v) => setFormData({ ...formData, location_id: v || null })}
+              value={formData.location_id || 'none'} 
+              onValueChange={(v) => setFormData({ ...formData, location_id: v === 'none' ? null : v })}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Wybierz lokalizację" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Nieprzypisane</SelectItem>
+                <SelectItem value="none">Nieprzypisane</SelectItem>
                 {locations.map(loc => (
                   <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                 ))}
@@ -490,7 +517,7 @@ function MaterialDialog({
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="Dodatkowe informacje..."
               className="mt-1"
-              rows={2}
+              rows={3}
             />
           </div>
         </div>
@@ -519,51 +546,101 @@ function LocationDialog({
   isLoading: boolean;
 }) {
   const [formData, setFormData] = useState({ name: '', description: '', address: '' });
+  const [showForm, setShowForm] = useState(false);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => locationsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations'] });
+      toast.success('Lokalizacja usunięta');
+    },
+    onError: (err: Error) => toast.error(err.message)
+  });
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Lokalizacje</DialogTitle>
+          <DialogDescription>Zarządzaj lokalizacjami magazynów</DialogDescription>
         </DialogHeader>
+        
         <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            {locations.map(loc => (
-              <div key={loc.id} className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">{loc.name}</p>
-                  {loc.description && <p className="text-sm text-muted-foreground">{loc.description}</p>}
+          {locations.length > 0 && (
+            <div className="space-y-2">
+              {locations.map(loc => (
+                <div key={loc.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{loc.name}</p>
+                    {loc.address && <p className="text-sm text-muted-foreground">{loc.address}</p>}
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => deleteMutation.mutate(loc.id)}
+                    disabled={deleteMutation.isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t pt-4">
-            <Label className="text-sm font-medium">Dodaj nową lokalizację</Label>
-            <div className="space-y-2 mt-2">
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Nazwa lokalizacji"
-              />
-              <Input
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Opis (opcjonalnie)"
-              />
-              <Button 
-                onClick={() => {
-                  onCreate(formData);
-                  setFormData({ name: '', description: '', address: '' });
-                }}
-                disabled={isLoading || !formData.name}
-                className="w-full"
-              >
-                Dodaj lokalizację
-              </Button>
+              ))}
             </div>
-          </div>
+          )}
+
+          {showForm ? (
+            <div className="space-y-3 p-4 border rounded-lg">
+              <div>
+                <Label>Nazwa</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="np. Magazyn główny"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Adres</Label>
+                <Input
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  placeholder="np. ul. Przykładowa 1"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Opis</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Opcjonalny opis..."
+                  className="mt-1"
+                  rows={2}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowForm(false)} className="flex-1">
+                  Anuluj
+                </Button>
+                <Button 
+                  onClick={() => {
+                    onCreate(formData);
+                    setFormData({ name: '', description: '', address: '' });
+                    setShowForm(false);
+                  }} 
+                  disabled={isLoading || !formData.name}
+                  className="flex-1"
+                >
+                  Dodaj
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="outline" onClick={() => setShowForm(true)} className="w-full gap-2">
+              <Plus className="h-4 w-4" />
+              Dodaj lokalizację
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
