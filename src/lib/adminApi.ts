@@ -171,7 +171,7 @@ export const printersApi = {
 export interface Material {
   id: string;
   name: string;
-  type: 'PLA' | 'PETG' | 'ABS' | 'TPU' | 'Resin' | 'Other';
+  type: 'PLA' | 'PETG' | 'ABS' | 'TPU' | 'ASA' | 'Nylon' | 'PC' | 'HIPS' | 'PVA' | 'Wood' | 'Metal' | 'Carbon' | 'Other';
   color: string;
   color_hex: string;
   location_id: string | null;
