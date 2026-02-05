@@ -235,7 +235,12 @@ export default function LocationsPage() {
 
   // Filter locations with coordinates for the map
   const mappableLocations = useMemo(() => 
-    locations.filter(loc => loc.latitude && loc.longitude),
+    locations.filter(loc => 
+      loc.latitude !== null && 
+      loc.longitude !== null && 
+      !isNaN(Number(loc.latitude)) && 
+      !isNaN(Number(loc.longitude))
+    ),
     [locations]
   );
 
@@ -330,9 +335,9 @@ export default function LocationsPage() {
                   
                   return (
                     <Marker
-                      key={location.id}
-                      position={[location.latitude!, location.longitude!]}
-                      icon={createIcon(status)}
+                      key={`marker-${location.id}`}
+                      position={[Number(location.latitude), Number(location.longitude)]}
+                      icon={createIcon(getLocationStatus(location.id))}
                       eventHandlers={{
                         click: () => openLocationDetails(location)
                       }}
