@@ -1,0 +1,2 @@
+1. Fix locations tab crashing
+2. When sidebar collapsed and anything clicked (for example dashboard, orders) then it uncollapses on page change

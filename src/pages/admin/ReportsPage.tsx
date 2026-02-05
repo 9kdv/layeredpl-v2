@@ -1,13 +1,20 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { format as formatDate, isWithinInterval, parseISO } from 'date-fns';
+import { pl } from 'date-fns/locale';
 import { 
-  BarChart3, TrendingUp, Download, Calendar, 
-  DollarSign, ShoppingCart, Package, ArrowUp, ArrowDown
+  TrendingUp, Download, CalendarIcon, 
+  DollarSign, ShoppingCart, Package, Percent
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -34,31 +41,168 @@ import {
   BarChart,
   Bar
 } from 'recharts';
-import { reportsApi, SalesReport } from '@/lib/adminApi';
-import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
+
+// ===== API IMPORTS - UNCOMMENT FOR PRODUCTION =====
+// import { reportsApi, SalesReport } from '@/lib/adminApi';
+// import { api } from '@/lib/api';
+
+// ===== TYPES =====
+interface SalesReport {
+  period: string;
+  orders: number;
+  revenue: number;
+  avg_order: number;
+  total_discounts: number;
+}
+
+interface OrderItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+interface Order {
+  id: number;
+  created_at: string;
+  items: OrderItem[];
+}
+
+// ===== MOCK DATA FOR PREVIEW =====
+const USE_MOCK_DATA = true; // Set to false when API is connected
+
+const generateMockSalesData = (): SalesReport[] => {
+  const data: SalesReport[] = [];
+  const startDate = new Date('2025-01-01');
+  
+  for (let i = 0; i < 60; i++) {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + i);
+    
+    const orders = Math.floor(Math.random() * 20) + 5;
+    const revenue = orders * (Math.random() * 80 + 60);
+    
+    data.push({
+      period: formatDate(date, 'yyyy-MM-dd'),
+      orders,
+      revenue: Math.round(revenue * 100) / 100,
+      avg_order: Math.round((revenue / orders) * 100) / 100,
+      total_discounts: Math.round(revenue * 0.05 * 100) / 100,
+    });
+  }
+  return data;
+};
+
+const generateMockOrders = (): Order[] => {
+  const products = ['Produkt A', 'Produkt B', 'Produkt C', 'Produkt D', 'Produkt E'];
+  const orders: Order[] = [];
+  
+  for (let i = 1; i <= 50; i++) {
+    const date = new Date('2025-01-01');
+    date.setDate(date.getDate() + Math.floor(Math.random() * 60));
+    
+    const items: OrderItem[] = [];
+    const numItems = Math.floor(Math.random() * 3) + 1;
+    
+    for (let j = 0; j < numItems; j++) {
+      items.push({
+        name: products[Math.floor(Math.random() * products.length)],
+        quantity: Math.floor(Math.random() * 5) + 1,
+        price: Math.floor(Math.random() * 100) + 20,
+      });
+    }
+    
+    orders.push({ id: i, created_at: date.toISOString(), items });
+  }
+  return orders;
+};
+
+const MOCK_SALES_DATA = generateMockSalesData();
+const MOCK_ORDERS = generateMockOrders();
 
 export default function ReportsPage() {
-  const [dateRange, setDateRange] = useState({
-    start: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
-  });
+  const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 1)));
+  const [endDate, setEndDate] = useState<Date>(new Date());
   const [groupBy, setGroupBy] = useState('day');
 
-  const { data: salesData = [], isLoading } = useQuery({
-    queryKey: ['sales-report', dateRange, groupBy],
-    queryFn: () => reportsApi.getSales({
-      start_date: dateRange.start,
-      end_date: dateRange.end,
-      group_by: groupBy
-    })
+  // ===== REAL API QUERIES - ACTIVE WHEN USE_MOCK_DATA = false =====
+  const { data: apiSalesData = [], isLoading: salesLoading } = useQuery({
+    queryKey: ['sales-report', startDate, endDate, groupBy],
+    queryFn: async () => {
+      if (USE_MOCK_DATA) return [];
+      // Uncomment when API is connected:
+      // return reportsApi.getSales({
+      //   start_date: formatDate(startDate, 'yyyy-MM-dd'),
+      //   end_date: formatDate(endDate, 'yyyy-MM-dd'),
+      //   group_by: groupBy
+      // });
+      return [];
+    },
+    enabled: !USE_MOCK_DATA,
   });
 
-  const { data: orders = [] } = useQuery({
+  const { data: apiOrders = [], isLoading: ordersLoading } = useQuery({
     queryKey: ['all-orders'],
-    queryFn: api.getOrders
+    queryFn: async () => {
+      if (USE_MOCK_DATA) return [];
+      // Uncomment when API is connected:
+      // return api.getOrders();
+      return [];
+    },
+    enabled: !USE_MOCK_DATA,
   });
 
-  // Calculate summary stats
+  // ===== FILTERED MOCK DATA =====
+  const filteredMockSales = useMemo(() => {
+    if (!USE_MOCK_DATA) return [];
+    
+    return MOCK_SALES_DATA.filter(item => {
+      const itemDate = parseISO(item.period);
+      return isWithinInterval(itemDate, { start: startDate, end: endDate });
+    });
+  }, [startDate, endDate]);
+
+  // Group mock data by week/month if needed
+  const groupedMockSales = useMemo(() => {
+    if (!USE_MOCK_DATA) return [];
+    
+    if (groupBy === 'day') return filteredMockSales;
+    
+    const grouped: Record<string, SalesReport> = {};
+    
+    filteredMockSales.forEach(item => {
+      const date = parseISO(item.period);
+      let key: string;
+      
+      if (groupBy === 'week') {
+        const weekStart = new Date(date);
+        weekStart.setDate(date.getDate() - date.getDay());
+        key = formatDate(weekStart, 'yyyy-MM-dd');
+      } else {
+        key = formatDate(date, 'yyyy-MM');
+      }
+      
+      if (!grouped[key]) {
+        grouped[key] = { period: key, orders: 0, revenue: 0, avg_order: 0, total_discounts: 0 };
+      }
+      grouped[key].orders += item.orders;
+      grouped[key].revenue += item.revenue;
+      grouped[key].total_discounts += item.total_discounts;
+    });
+    
+    Object.values(grouped).forEach(item => {
+      item.avg_order = item.orders > 0 ? item.revenue / item.orders : 0;
+    });
+    
+    return Object.values(grouped).sort((a, b) => b.period.localeCompare(a.period));
+  }, [filteredMockSales, groupBy]);
+
+  // ===== USE MOCK OR API DATA =====
+  const salesData = USE_MOCK_DATA ? groupedMockSales : apiSalesData;
+  const orders = USE_MOCK_DATA ? MOCK_ORDERS : apiOrders;
+  const isLoading = USE_MOCK_DATA ? false : (salesLoading || ordersLoading);
+
+  // ===== CALCULATE STATS =====
   const totalRevenue = salesData.reduce((sum, d) => sum + d.revenue, 0);
   const totalOrders = salesData.reduce((sum, d) => sum + d.orders, 0);
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
@@ -71,8 +215,10 @@ export default function ReportsPage() {
   }));
 
   // Product statistics from orders
-  const productStats = orders.reduce((acc, order) => {
-    order.items?.forEach((item: { name: string; quantity: number; price: number }) => {
+  interface ProductStat { name: string; quantity: number; revenue: number }
+  
+  const productStats = orders.reduce<Record<string, ProductStat>>((acc, order) => {
+    order.items?.forEach((item: OrderItem) => {
       if (!acc[item.name]) {
         acc[item.name] = { name: item.name, quantity: 0, revenue: 0 };
       }
@@ -80,72 +226,119 @@ export default function ReportsPage() {
       acc[item.name].revenue += item.price * item.quantity;
     });
     return acc;
-  }, {} as Record<string, { name: string; quantity: number; revenue: number }>);
+  }, {});
 
   const topProducts = Object.values(productStats)
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
-  const handleExport = (format: 'csv' | 'pdf') => {
-    if (format === 'csv') {
-      const headers = ['Okres', 'Zamówienia', 'Przychód', 'Średnia wartość', 'Rabaty'];
-      const rows = salesData.map(d => [d.period, d.orders, d.revenue.toFixed(2), d.avg_order.toFixed(2), d.total_discounts.toFixed(2)]);
+  const handleExport = (exportFormat: 'csv' | 'pdf') => {
+    if (exportFormat === 'csv') {
+      const headers = ['Okres', 'Zamówienia', 'Przychód', 'Średnia wartość', 'Udzielone rabaty'];
+      const rows = salesData.map(d => [
+        d.period, 
+        d.orders, 
+        d.revenue.toFixed(2), 
+        d.avg_order.toFixed(2), 
+        d.total_discounts.toFixed(2)
+      ]);
       const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `raport-sprzedazy-${dateRange.start}-${dateRange.end}.csv`;
+      a.download = `raport-sprzedazy-${formatDate(startDate, 'yyyy-MM-dd')}-${formatDate(endDate, 'yyyy-MM-dd')}.csv`;
       a.click();
     }
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Ładowanie...</div></div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-pulse text-muted-foreground">Ładowanie...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Raporty i statystyki</h1>
-          <p className="text-muted-foreground">Analiza sprzedaży i produktów</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Raporty i statystyki</h1>
+          <p className="text-muted-foreground mt-1">Analiza sprzedaży i produktów</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handleExport('csv')} className="gap-2">
-            <Download className="h-4 w-4" />
-            Eksportuj CSV
-          </Button>
-        </div>
+        <Button variant="outline" onClick={() => handleExport('csv')} className="gap-2 w-full sm:w-auto">
+          <Download className="h-4 w-4" />
+          Eksportuj CSV
+        </Button>
       </div>
 
       {/* Date Range Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div>
-              <Label>Od</Label>
-              <Input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="mt-1"
-              />
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-4 sm:gap-6 sm:items-end">
+            <div className="flex-1 min-w-[180px] space-y-2">
+              <Label className="text-sm font-medium">Od</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                    {startDate ? formatDate(startDate, "d MMM yyyy", { locale: pl }) : <span>Wybierz datę</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={(date) => date && setStartDate(date)}
+                    initialFocus
+                    className="pointer-events-auto"
+                    disabled={(date) => date > endDate || date > new Date()}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
-            <div>
-              <Label>Do</Label>
-              <Input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="mt-1"
-              />
+
+            <div className="flex-1 min-w-[180px] space-y-2">
+              <Label className="text-sm font-medium">Do</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                    {endDate ? formatDate(endDate, "d MMM yyyy", { locale: pl }) : <span>Wybierz datę</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={(date) => date && setEndDate(date)}
+                    initialFocus
+                    className="pointer-events-auto"
+                    disabled={(date) => date < startDate || date > new Date()}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
-            <div>
-              <Label>Grupuj wg</Label>
+
+            <div className="flex-1 min-w-[150px] space-y-2">
+              <Label className="text-sm font-medium">Grupuj wg</Label>
               <Select value={groupBy} onValueChange={setGroupBy}>
-                <SelectTrigger className="w-[150px] mt-1">
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -160,44 +353,45 @@ export default function ReportsPage() {
       </Card>
 
       {/* Summary Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Przychód</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Przychód</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalRevenue.toFixed(2)} zł</div>
+            <div className="text-lg sm:text-2xl font-bold">{totalRevenue.toFixed(2)} zł</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Zamówienia</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Zamówienia</CardTitle>
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalOrders}</div>
+            <div className="text-lg sm:text-2xl font-bold">{totalOrders}</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Średnia wartość</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Średnia wartość</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{avgOrderValue.toFixed(2)} zł</div>
+            <div className="text-lg sm:text-2xl font-bold">{avgOrderValue.toFixed(2)} zł</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Rabaty</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Udzielone rabaty</CardTitle>
+            <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalDiscounts.toFixed(2)} zł</div>
+            <div className="text-lg sm:text-2xl font-bold text-destructive">{totalDiscounts.toFixed(2)} zł</div>
+            <p className="text-xs text-muted-foreground mt-1">Suma zniżek dla klientów</p>
           </CardContent>
         </Card>
       </div>
@@ -205,19 +399,32 @@ export default function ReportsPage() {
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle>Przychód w czasie</CardTitle>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base sm:text-lg">Przychód w czasie</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
+          <CardContent className="pl-2 pr-4">
+            <div className="h-[250px] sm:h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="name" className="text-xs" />
-                  <YAxis className="text-xs" />
+                  <XAxis 
+                    dataKey="name" 
+                    className="text-xs" 
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(value) => {
+                      if (groupBy === 'month') return value;
+                      return formatDate(parseISO(value), 'd.MM', { locale: pl });
+                    }}
+                  />
+                  <YAxis className="text-xs" tick={{ fontSize: 10 }} />
                   <Tooltip 
                     formatter={(value: number) => [`${value.toFixed(2)} zł`, 'Przychód']}
-                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--background))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
                   />
                   <Line 
                     type="monotone" 
@@ -233,19 +440,32 @@ export default function ReportsPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Liczba zamówień</CardTitle>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base sm:text-lg">Liczba zamówień</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
+          <CardContent className="pl-2 pr-4">
+            <div className="h-[250px] sm:h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="name" className="text-xs" />
-                  <YAxis className="text-xs" />
+                  <XAxis 
+                    dataKey="name" 
+                    className="text-xs"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(value) => {
+                      if (groupBy === 'month') return value;
+                      return formatDate(parseISO(value), 'd.MM', { locale: pl });
+                    }}
+                  />
+                  <YAxis className="text-xs" tick={{ fontSize: 10 }} />
                   <Tooltip 
                     formatter={(value: number) => [value, 'Zamówienia']}
-                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--background))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
                   />
                   <Bar 
                     dataKey="orders" 
@@ -261,79 +481,86 @@ export default function ReportsPage() {
 
       {/* Top Products */}
       <Card>
-        <CardHeader>
-          <CardTitle>Najpopularniejsze produkty</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base sm:text-lg">Najpopularniejsze produkty</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pozycja</TableHead>
-                <TableHead>Produkt</TableHead>
-                <TableHead className="text-right">Sprzedanych szt.</TableHead>
-                <TableHead className="text-right">Przychód</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {topProducts.map((product, index) => (
-                <TableRow key={product.name}>
-                  <TableCell>
-                    <span className={`font-bold ${index < 3 ? 'text-primary' : 'text-muted-foreground'}`}>
-                      #{index + 1}
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell className="text-right">{product.quantity}</TableCell>
-                  <TableCell className="text-right font-medium">{product.revenue.toFixed(2)} zł</TableCell>
-                </TableRow>
-              ))}
-              {topProducts.length === 0 && (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
-                    Brak danych o produktach
-                  </TableCell>
+                  <TableHead className="w-16">Poz.</TableHead>
+                  <TableHead>Produkt</TableHead>
+                  <TableHead className="text-right">Szt.</TableHead>
+                  <TableHead className="text-right">Przychód</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {topProducts.map((product, index) => (
+                  <TableRow key={product.name}>
+                    <TableCell>
+                      <span className={cn(
+                        "font-bold",
+                        index < 3 ? "text-primary" : "text-muted-foreground"
+                      )}>
+                        #{index + 1}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-medium">{product.name}</TableCell>
+                    <TableCell className="text-right">{product.quantity}</TableCell>
+                    <TableCell className="text-right font-medium">{product.revenue.toFixed(2)} zł</TableCell>
+                  </TableRow>
+                ))}
+                {topProducts.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                      Brak danych o produktach
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
       {/* Detailed Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Szczegóły sprzedaży</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base sm:text-lg">Szczegóły sprzedaży</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Okres</TableHead>
-                <TableHead className="text-right">Zamówienia</TableHead>
-                <TableHead className="text-right">Przychód</TableHead>
-                <TableHead className="text-right">Średnia wartość</TableHead>
-                <TableHead className="text-right">Rabaty</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {salesData.map((row) => (
-                <TableRow key={row.period}>
-                  <TableCell className="font-medium">{row.period}</TableCell>
-                  <TableCell className="text-right">{row.orders}</TableCell>
-                  <TableCell className="text-right">{row.revenue.toFixed(2)} zł</TableCell>
-                  <TableCell className="text-right">{row.avg_order.toFixed(2)} zł</TableCell>
-                  <TableCell className="text-right">{row.total_discounts.toFixed(2)} zł</TableCell>
-                </TableRow>
-              ))}
-              {salesData.length === 0 && (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                    Brak danych dla wybranego okresu
-                  </TableCell>
+                  <TableHead>Okres</TableHead>
+                  <TableHead className="text-right">Zam.</TableHead>
+                  <TableHead className="text-right">Przychód</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">Średnia</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">Rabaty</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {salesData.map((row) => (
+                  <TableRow key={row.period}>
+                    <TableCell className="font-medium whitespace-nowrap">{row.period}</TableCell>
+                    <TableCell className="text-right">{row.orders}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">{row.revenue.toFixed(2)} zł</TableCell>
+                    <TableCell className="text-right hidden sm:table-cell whitespace-nowrap">{row.avg_order.toFixed(2)} zł</TableCell>
+                    <TableCell className="text-right hidden sm:table-cell whitespace-nowrap text-destructive">{row.total_discounts.toFixed(2)} zł</TableCell>
+                  </TableRow>
+                ))}
+                {salesData.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                      Brak danych dla wybranego okresu
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

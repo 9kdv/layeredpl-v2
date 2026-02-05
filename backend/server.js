@@ -3026,6 +3026,56 @@ app.post('/admin/locations', authenticate, requirePermission('production.manage'
   }
 });
 
+app.put('/admin/locations/:id', authenticate, requirePermission('production.manage'), async (req, res) => {
+  const { id } = req.params;
+  const { name, description, address, latitude, longitude, is_active } = req.body;
+
+  try {
+    await pool.execute(
+      `UPDATE locations 
+      SET name = COALESCE(?, name), 
+          description = COALESCE(?, description), 
+          address = COALESCE(?, address), 
+          latitude = COALESCE(?, latitude), 
+          longitude = COALESCE(?, longitude), 
+          is_active = COALESCE(?, is_active)
+      WHERE id = ?`,
+      [
+        name ?? null,
+        description ?? null,
+        address ?? null,
+        latitude ?? null,
+        longitude ?? null,
+        typeof is_active === 'boolean' ? is_active : null,
+        id
+      ]
+    );
+
+    const [updated] = await pool.execute('SELECT * FROM locations WHERE id = ?', [id]);
+    res.json(updated[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+app.delete('/admin/locations/:id', authenticate, requirePermission('production.manage'), async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [result] = await pool.execute('DELETE FROM locations WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Lokalizacja nie istnieje' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
 // ============ RETURNS ============
 
 app.get('/admin/returns', authenticate, requirePermission('returns.view'), async (req, res) => {

@@ -1,5 +1,5 @@
 // Admin API methods for all modules
-const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3001';
+const API_BASE = import.meta.env.PROD ? '/api' : 'http://192.168.0.104:3001';
 
 function getToken(): string | null {
   return localStorage.getItem('auth_token');
@@ -327,10 +327,25 @@ export interface ActivityLog {
   details: Record<string, unknown> | null;
   ip_address: string | null;
   created_at: string;
+  user_agent?: string;
+}
+
+export interface ActivityLogsResponse {
+  logs: ActivityLog[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export const logsApi = {
-  getAll: (params?: { user_id?: string; action?: string; entity_type?: string; start_date?: string; end_date?: string; limit?: number }) => {
+  getAll: (params?: {
+    user_id?: string;
+    action?: string;
+    entity_type?: string;
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+  }): Promise<ActivityLogsResponse> => {
     const query = new URLSearchParams();
     if (params?.user_id) query.set('user_id', params.user_id);
     if (params?.action) query.set('action', params.action);
@@ -338,14 +353,16 @@ export const logsApi = {
     if (params?.start_date) query.set('start_date', params.start_date);
     if (params?.end_date) query.set('end_date', params.end_date);
     if (params?.limit) query.set('limit', params.limit.toString());
-    return request<ActivityLog[]>(`/admin/logs?${query.toString()}`);
+
+    return request<ActivityLogsResponse>(`/admin/logs?${query.toString()}`);
   },
+
   export: (format: 'csv' | 'json') => {
     const token = getToken();
     return fetch(`${API_BASE}/admin/logs/export?format=${format}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    }).then(r => r.blob());
-  }
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.blob());
+  },
 };
 
 // ============ ORDERS EXPORT ============
