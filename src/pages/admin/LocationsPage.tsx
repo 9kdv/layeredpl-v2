@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { 
@@ -16,7 +16,9 @@ import {
   XCircle,
   Loader2,
   X,
-  Boxes
+  Boxes,
+  MousePointer,
+  Navigation
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Sheet,
@@ -81,12 +84,61 @@ const createIcon = (color: 'green' | 'yellow' | 'red') => {
   });
 };
 
+// Temporary marker icon (blue)
+const temporaryMarkerIcon = L.divIcon({
+  className: 'custom-marker-temp',
+  html: `
+    <div style="
+      width: 36px;
+      height: 36px;
+      background: #3b82f6;
+      border: 3px solid white;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 2px 12px rgba(59,130,246,0.5);
+      animation: pulse 1.5s infinite;
+    ">
+      <div style="
+        width: 14px;
+        height: 14px;
+        background: white;
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      "></div>
+    </div>
+  `,
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
+  popupAnchor: [0, -36]
+});
+
 // Map center controller
 function MapController({ center }: { center: [number, number] }) {
   const map = useMap();
   useEffect(() => {
     map.setView(center, map.getZoom());
   }, [center, map]);
+  return null;
+}
+
+// Map click handler component
+function MapClickHandler({ 
+  onMapClick, 
+  isClickMode 
+}: { 
+  onMapClick: (lat: number, lng: number) => void;
+  isClickMode: boolean;
+}) {
+  useMapEvents({
+    click: (e) => {
+      if (isClickMode) {
+        onMapClick(e.latlng.lat, e.latlng.lng);
+      }
+    }
+  });
   return null;
 }
 
@@ -99,13 +151,16 @@ export default function LocationsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([52.2297, 21.0122]); // Warsaw default
+  
+  // New state for click-to-set-location flow
+  const [pendingLocation, setPendingLocation] = useState<{ id: string; name: string } | null>(null);
+  const [temporaryMarker, setTemporaryMarker] = useState<{ lat: number; lng: number; address: string } | null>(null);
+  const [isLoadingAddress, setIsLoadingAddress] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     address: '',
-    latitude: '',
-    longitude: '',
     is_active: true
   });
 
@@ -126,10 +181,15 @@ export default function LocationsPage() {
 
   const createMutation = useMutation({
     mutationFn: locationsApi.create,
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin-locations'] });
       setIsDialogOpen(false);
-      toast({ title: 'Lokalizacja dodana' });
+      // Set pending location for map click
+      setPendingLocation({ id: data.id, name: data.name });
+      toast({ 
+        title: 'Lokalizacja dodana', 
+        description: 'Kliknij na mapę, aby ustawić współrzędne' 
+      });
     },
     onError: (err: Error) => toast({ title: 'Błąd', description: err.message, variant: 'destructive' })
   });
@@ -139,6 +199,8 @@ export default function LocationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-locations'] });
       setIsDialogOpen(false);
+      setTemporaryMarker(null);
+      setPendingLocation(null);
       toast({ title: 'Lokalizacja zaktualizowana' });
     },
     onError: (err: Error) => toast({ title: 'Błąd', description: err.message, variant: 'destructive' })
@@ -151,6 +213,49 @@ export default function LocationsPage() {
       toast({ title: 'Lokalizacja usunięta' });
     }
   });
+
+  // Reverse geocoding to get address from coordinates
+  const fetchAddressFromCoords = useCallback(async (lat: number, lng: number) => {
+    setIsLoadingAddress(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { headers: { 'Accept-Language': 'pl' } }
+      );
+      const data = await response.json();
+      return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } catch (error) {
+      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } finally {
+      setIsLoadingAddress(false);
+    }
+  }, []);
+
+  // Handle map click
+  const handleMapClick = useCallback(async (lat: number, lng: number) => {
+    if (!pendingLocation) return;
+    
+    const address = await fetchAddressFromCoords(lat, lng);
+    setTemporaryMarker({ lat, lng, address });
+  }, [pendingLocation, fetchAddressFromCoords]);
+
+  // Confirm temporary marker position
+  const confirmMarkerPosition = useCallback(() => {
+    if (!temporaryMarker || !pendingLocation) return;
+    
+    updateMutation.mutate({
+      id: pendingLocation.id,
+      latitude: temporaryMarker.lat,
+      longitude: temporaryMarker.lng,
+      address: temporaryMarker.address
+    });
+  }, [temporaryMarker, pendingLocation, updateMutation]);
+
+  // Cancel pending location
+  const cancelPendingLocation = useCallback(() => {
+    setPendingLocation(null);
+    setTemporaryMarker(null);
+  }, []);
 
   // Get location status based on printers and materials
   const getLocationStatus = (locationId: string): 'green' | 'yellow' | 'red' => {
@@ -193,8 +298,6 @@ export default function LocationsPage() {
         name: location.name,
         description: location.description || '',
         address: location.address || '',
-        latitude: location.latitude?.toString() || '',
-        longitude: location.longitude?.toString() || '',
         is_active: location.is_active !== false
       });
     } else {
@@ -203,8 +306,6 @@ export default function LocationsPage() {
         name: '',
         description: '',
         address: '',
-        latitude: '',
-        longitude: '',
         is_active: true
       });
     }
@@ -216,14 +317,13 @@ export default function LocationsPage() {
       name: formData.name,
       description: formData.description || undefined,
       address: formData.address || undefined,
-      latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-      longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
       is_active: formData.is_active
     };
 
     if (editingLocation) {
       updateMutation.mutate({ id: editingLocation.id, ...data });
     } else {
+      // Create without coordinates - user will click on map
       createMutation.mutate(data as any);
     }
   };
@@ -231,6 +331,16 @@ export default function LocationsPage() {
   const openLocationDetails = (location: Location) => {
     setSelectedLocation(location);
     setIsDrawerOpen(true);
+  };
+
+  // Set location for coordinate update via map click
+  const setLocationForMapClick = (location: Location) => {
+    setPendingLocation({ id: location.id, name: location.name });
+    setTemporaryMarker(null);
+    toast({ 
+      title: `Ustawianie pozycji: ${location.name}`, 
+      description: 'Kliknij na mapę, aby ustawić współrzędne' 
+    });
   };
 
   // Filter locations with coordinates for the map
@@ -268,6 +378,48 @@ export default function LocationsPage() {
           Dodaj lokalizację
         </Button>
       </div>
+
+      {/* Pending location indicator */}
+      {pendingLocation && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <MousePointer className="h-5 w-5 text-blue-500" />
+              <div>
+                <p className="font-medium text-blue-500">Tryb ustawiania pozycji</p>
+                <p className="text-sm text-muted-foreground">
+                  Kliknij na mapę, aby ustawić współrzędne dla: <strong>{pendingLocation.name}</strong>
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {temporaryMarker && (
+                <Button size="sm" onClick={confirmMarkerPosition} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Potwierdź pozycję'}
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={cancelPendingLocation}>
+                Anuluj
+              </Button>
+            </div>
+          </div>
+          
+          {temporaryMarker && (
+            <div className="mt-3 p-3 bg-muted/50 rounded-lg">
+              <p className="text-sm">
+                <strong>Współrzędne:</strong> {temporaryMarker.lat.toFixed(6)}, {temporaryMarker.lng.toFixed(6)}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                <strong>Adres:</strong> {isLoadingAddress ? 'Ładowanie...' : temporaryMarker.address}
+              </p>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* Stats overview */}
       <div className="grid grid-cols-3 gap-4">
@@ -316,52 +468,70 @@ export default function LocationsPage() {
       <Card className="overflow-hidden">
         <CardContent className="p-0">
           <div className="h-[500px] relative">
-            {mappableLocations.length > 0 ? (
-              <MapContainer
-                center={mapCenter}
-                zoom={6}
-                className="h-full w-full"
-                style={{ zIndex: 1 }}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <MapController center={mapCenter} />
+            <MapContainer
+              center={mapCenter}
+              zoom={6}
+              className="h-full w-full"
+              style={{ zIndex: 1 }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <MapController center={mapCenter} />
+              <MapClickHandler onMapClick={handleMapClick} isClickMode={!!pendingLocation} />
+              
+              {/* Existing location markers */}
+              {mappableLocations.map((location) => {
+                const stats = getLocationStats(location.id);
                 
-                {mappableLocations.map((location) => {
-                  const status = getLocationStatus(location.id);
-                  const stats = getLocationStats(location.id);
-                  
-                  return (
-                    <Marker
-                      key={`marker-${location.id}`}
-                      position={[Number(location.latitude), Number(location.longitude)]}
-                      icon={createIcon(getLocationStatus(location.id))}
-                      eventHandlers={{
-                        click: () => openLocationDetails(location)
-                      }}
-                    >
-                      <Popup>
-                        <div className="text-sm">
-                          <p className="font-semibold">{location.name}</p>
-                          <p className="text-muted-foreground">
-                            {stats.printersOnline}/{stats.printersTotal} drukarek online
-                          </p>
-                          <p className="text-muted-foreground">{stats.materialKg}kg materiału</p>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  );
-                })}
-              </MapContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center bg-muted/30">
-                <div className="text-center">
-                  <MapPin className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Brak lokalizacji z współrzędnymi</p>
-                  <p className="text-sm text-muted-foreground">Dodaj lokalizację i podaj współrzędne GPS</p>
-                </div>
+                return (
+                  <Marker
+                    key={`marker-${location.id}`}
+                    position={[Number(location.latitude), Number(location.longitude)]}
+                    icon={createIcon(getLocationStatus(location.id))}
+                    eventHandlers={{
+                      click: () => openLocationDetails(location)
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-sm">
+                        <p className="font-semibold">{location.name}</p>
+                        <p className="text-muted-foreground">
+                          {stats.printersOnline}/{stats.printersTotal} drukarek online
+                        </p>
+                        <p className="text-muted-foreground">{stats.materialKg}kg materiału</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+              
+              {/* Temporary marker */}
+              {temporaryMarker && (
+                <Marker
+                  position={[temporaryMarker.lat, temporaryMarker.lng]}
+                  icon={temporaryMarkerIcon}
+                >
+                  <Popup>
+                    <div className="text-sm">
+                      <p className="font-semibold">{pendingLocation?.name}</p>
+                      <p className="text-muted-foreground text-xs mt-1">
+                        {isLoadingAddress ? 'Ładowanie adresu...' : temporaryMarker.address}
+                      </p>
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+            </MapContainer>
+            
+            {/* Map overlay for click mode */}
+            {pendingLocation && (
+              <div className="absolute top-4 left-4 z-[1000] bg-background/90 backdrop-blur px-3 py-2 rounded-lg shadow-lg border">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Navigation className="h-4 w-4 text-blue-500" />
+                  Kliknij na mapę
+                </p>
               </div>
             )}
           </div>
@@ -378,6 +548,7 @@ export default function LocationsPage() {
             {locations.map((location) => {
               const status = getLocationStatus(location.id);
               const stats = getLocationStats(location.id);
+              const hasCoords = location.latitude && location.longitude;
               
               return (
                 <motion.div
@@ -385,7 +556,7 @@ export default function LocationsPage() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer"
-                  onClick={() => openLocationDetails(location)}
+                  onClick={() => hasCoords && openLocationDetails(location)}
                 >
                   <div className="flex items-center gap-4">
                     <div className={`w-3 h-3 rounded-full ${
@@ -394,8 +565,15 @@ export default function LocationsPage() {
                     }`} />
                     <div>
                       <p className="font-medium">{location.name}</p>
-                      <p className="text-sm text-muted-foreground">{location.address || 'Brak adresu'}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {location.address || (hasCoords ? `${Number(location.latitude).toFixed(4)}, ${Number(location.longitude).toFixed(4)}` : 'Brak współrzędnych')}
+                      </p>
                     </div>
+                    {!hasCoords && (
+                      <Badge variant="outline" className="text-yellow-500 border-yellow-500/50">
+                        Brak pozycji
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
@@ -407,6 +585,16 @@ export default function LocationsPage() {
                       <p className="text-xs text-muted-foreground">materiału</p>
                     </div>
                     <div className="flex gap-2">
+                      {!hasCoords && (
+                        <Button 
+                          variant="outline" 
+                          size="icon"
+                          onClick={(e) => { e.stopPropagation(); setLocationForMapClick(location); }}
+                          title="Ustaw pozycję na mapie"
+                        >
+                          <MapPin className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button 
                         variant="ghost" 
                         size="icon"
@@ -480,24 +668,17 @@ export default function LocationsPage() {
                               'destructive'
                             }>
                               {printer.status === 'available' ? 'Dostępna' :
-                               printer.status === 'busy' ? 'Drukuje' :
+                               printer.status === 'busy' ? 'Pracuje' :
                                printer.status === 'maintenance' ? 'Serwis' : 'Offline'}
                             </Badge>
                           </div>
                           {printer.status === 'busy' && (
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>Postęp druku</span>
-                                <span>65%</span>
-                              </div>
-                              <Progress value={65} className="h-2" />
-                            </div>
+                            <Progress value={65} className="h-2" />
                           )}
-                          <p className="text-xs text-muted-foreground mt-1">{printer.model}</p>
                         </div>
                       ))}
                       {printers.filter(p => p.location_id === selectedLocation.id).length === 0 && (
-                        <p className="text-sm text-muted-foreground">Brak drukarek w tej lokalizacji</p>
+                        <p className="text-sm text-muted-foreground">Brak drukarek</p>
                       )}
                     </div>
                   </div>
@@ -512,42 +693,29 @@ export default function LocationsPage() {
                       {materials.filter(m => m.location_id === selectedLocation.id).map((material) => (
                         <div key={material.id} className="p-3 bg-muted/50 rounded-lg flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            {material.color_hex && (
-                              <div 
-                                className="w-4 h-4 rounded-full border"
-                                style={{ backgroundColor: material.color_hex }}
-                              />
-                            )}
+                            <div 
+                              className="w-6 h-6 rounded border"
+                              style={{ backgroundColor: material.color_hex || '#888' }}
+                            />
                             <div>
-                              <span className="font-medium">{material.name}</span>
+                              <p className="font-medium">{material.name}</p>
                               <p className="text-xs text-muted-foreground">{material.type}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <span className={`font-medium ${
+                            <p className={`font-medium ${
                               material.status === 'out_of_stock' ? 'text-red-500' :
                               material.status === 'low_stock' ? 'text-yellow-500' : ''
                             }`}>
                               {material.quantity_available} {material.quantity_unit}
-                            </span>
+                            </p>
                           </div>
                         </div>
                       ))}
                       {materials.filter(m => m.location_id === selectedLocation.id).length === 0 && (
-                        <p className="text-sm text-muted-foreground">Brak materiałów w tej lokalizacji</p>
+                        <p className="text-sm text-muted-foreground">Brak materiałów</p>
                       )}
                     </div>
-                  </div>
-
-                  {/* Local queue - placeholder */}
-                  <div>
-                    <h3 className="font-semibold flex items-center gap-2 mb-3">
-                      <Package className="h-4 w-4" />
-                      Lokalna kolejka
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Funkcjonalność kolejki produkcji dostępna w zakładce "Kolejka produkcji"
-                    </p>
                   </div>
                 </div>
               </ScrollArea>
@@ -563,67 +731,55 @@ export default function LocationsPage() {
             <DialogTitle>
               {editingLocation ? 'Edytuj lokalizację' : 'Nowa lokalizacja'}
             </DialogTitle>
+            {!editingLocation && (
+              <DialogDescription>
+                Po dodaniu lokalizacji, kliknij na mapę aby ustawić współrzędne
+              </DialogDescription>
+            )}
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nazwa *</Label>
-              <Input 
+          
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Nazwa</Label>
+              <Input
                 value={formData.name}
-                onChange={(e) => setFormData(f => ({ ...f, name: e.target.value }))}
-                placeholder="np. Warszawa - Mokotów"
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="np. Magazyn Warszawa"
+                className="mt-1"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Adres</Label>
-              <Textarea 
-                value={formData.address}
-                onChange={(e) => setFormData(f => ({ ...f, address: e.target.value }))}
-                placeholder="ul. Przykładowa 123, 00-000 Miasto"
-                rows={2}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Szerokość geog. (lat)</Label>
-                <Input 
-                  value={formData.latitude}
-                  onChange={(e) => setFormData(f => ({ ...f, latitude: e.target.value }))}
-                  placeholder="52.2297"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Długość geog. (lng)</Label>
-                <Input 
-                  value={formData.longitude}
-                  onChange={(e) => setFormData(f => ({ ...f, longitude: e.target.value }))}
-                  placeholder="21.0122"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
+            
+            <div>
               <Label>Opis</Label>
-              <Textarea 
+              <Textarea
                 value={formData.description}
-                onChange={(e) => setFormData(f => ({ ...f, description: e.target.value }))}
-                placeholder="Dodatkowe informacje..."
-                rows={2}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Opcjonalny opis lokalizacji..."
+                className="mt-1"
+                rows={3}
               />
             </div>
-            <div className="flex items-center gap-3">
+            
+            <div className="flex items-center justify-between">
+              <Label>Aktywna</Label>
               <Switch
                 checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData(f => ({ ...f, is_active: checked }))}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
               />
-              <Label>Lokalizacja aktywna</Label>
             </div>
           </div>
+          
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Anuluj</Button>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Anuluj
+            </Button>
             <Button 
-              onClick={handleSubmit}
+              onClick={handleSubmit} 
               disabled={!formData.name || createMutation.isPending || updateMutation.isPending}
             >
-              {createMutation.isPending || updateMutation.isPending ? 'Zapisywanie...' : 'Zapisz'}
+              {createMutation.isPending || updateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : editingLocation ? 'Zapisz' : 'Dodaj i ustaw na mapie'}
             </Button>
           </DialogFooter>
         </DialogContent>

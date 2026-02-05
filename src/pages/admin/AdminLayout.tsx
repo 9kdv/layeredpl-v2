@@ -74,10 +74,11 @@ function AdminSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       <div className="h-16 flex items-center px-4 border-b border-border">
-        <Link to="/admin" className="flex items-center gap-3">
+        {/* Non-clickable logo */}
+        <div className="flex items-center gap-3 cursor-default">
           <img src="/favicon.svg" alt="layered.pl" className="h-8" />
           {!collapsed && <span className="text-lg font-bold tracking-tighter uppercase">layered</span>}
-        </Link>
+        </div>
       </div>
 
       <SidebarContent className="py-4">
@@ -88,7 +89,7 @@ function AdminSidebar() {
             <SidebarMenu>
               {mainMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild tooltip={item.title}>
+                  <SidebarMenuButton asChild tooltip={collapsed ? item.title : undefined}>
                     <NavLink 
                       to={item.url} 
                       end={item.url === '/admin'}
@@ -112,7 +113,7 @@ function AdminSidebar() {
             <SidebarMenu>
               {productionMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild tooltip={item.title}>
+                  <SidebarMenuButton asChild tooltip={collapsed ? item.title : undefined}>
                     <NavLink 
                       to={item.url} 
                       className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-muted"
@@ -135,7 +136,7 @@ function AdminSidebar() {
             <SidebarMenu>
               {systemMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild tooltip={item.title}>
+                  <SidebarMenuButton asChild tooltip={collapsed ? item.title : undefined}>
                     <NavLink 
                       to={item.url} 
                       className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-muted"
@@ -275,6 +276,16 @@ function AdminHeader() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Get user's primary role name
+  const getRoleName = () => {
+    // Try to get role from user object
+    const roles = (user as any)?.roles;
+    if (roles && Array.isArray(roles) && roles.length > 0) {
+      return roles[0].display_name || roles[0].name || 'Administrator';
+    }
+    return 'Super Admin';
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -317,13 +328,19 @@ function AdminHeader() {
       <div className="flex items-center gap-4">
         <NotificationsPopover />
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <div className="text-right">
             <p className="text-sm font-medium">{user?.email}</p>
-            <p className="text-xs text-muted-foreground">Administrator</p>
+            <p className="text-xs text-primary font-medium">{getRoleName()}</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleLogout}>
-            <LogOut className="h-5 w-5" />
+          <Button 
+            variant="outline" 
+            size="default" 
+            onClick={handleLogout}
+            className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            <LogOut className="h-4 w-4" />
+            Wyloguj
           </Button>
         </div>
       </div>

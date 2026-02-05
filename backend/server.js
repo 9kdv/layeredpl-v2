@@ -4125,6 +4125,107 @@ app.get('/admin/reports/products', authenticate, requirePermission('finance.repo
   }
 });
 
+// ============ ORDERS EXPORT ============
+
+app.get('/admin/orders/export', authenticate, requirePermission('orders.view'), async (req, res) => {
+  const { status, start_date, end_date, format } = req.query;
+  
+  try {
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    
+    if (status && status !== 'all') {
+      whereClause += ' AND o.status = ?';
+      params.push(status);
+    }
+    if (start_date) {
+      whereClause += ' AND o.created_at >= ?';
+      params.push(start_date);
+    }
+    if (end_date) {
+      whereClause += ' AND o.created_at <= ?';
+      params.push(end_date + ' 23:59:59');
+    }
+    
+    const [orders] = await pool.execute(`
+      SELECT 
+        o.id,
+        o.customer_name,
+        o.customer_email,
+        o.customer_phone,
+        o.status,
+        o.total,
+        o.discount_amount,
+        o.shipping_address,
+        o.items,
+        o.created_at,
+        o.updated_at
+      FROM orders o
+      ${whereClause}
+      ORDER BY o.created_at DESC
+    `, params);
+    
+    // Process orders for export
+    const exportData = orders.map(order => {
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      const address = typeof order.shipping_address === 'string' ? JSON.parse(order.shipping_address) : order.shipping_address;
+      
+      // Extract materials from items
+      const materials = items.map(item => {
+        const customizations = item.customizations || [];
+        const materialCustom = customizations.find(c => c.optionType === 'material');
+        return materialCustom?.selectedMaterial?.name || 'Brak';
+      }).join(', ');
+      
+      return {
+        'ID Zamówienia': order.id,
+        'Klient': order.customer_name || 'Brak',
+        'Email': order.customer_email,
+        'Telefon': order.customer_phone || 'Brak',
+        'Status': order.status,
+        'Suma': order.total,
+        'Rabat': order.discount_amount || 0,
+        'Produkty': items.map(i => `${i.name} (x${i.quantity})`).join('; '),
+        'Materiały': materials,
+        'Ulica': address?.street || 'Brak',
+        'Miasto': address?.city || 'Brak',
+        'Kod pocztowy': address?.postalCode || 'Brak',
+        'Data zamówienia': new Date(order.created_at).toLocaleString('pl-PL'),
+        'Data aktualizacji': order.updated_at ? new Date(order.updated_at).toLocaleString('pl-PL') : 'Brak'
+      };
+    });
+    
+    if (format === 'json') {
+      res.setHeader('Content-Disposition', 'attachment; filename=zamowienia.json');
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(exportData);
+    }
+    
+    // Default: CSV
+    const headers = Object.keys(exportData[0] || {});
+    const csvRows = [
+      headers.join(';'),
+      ...exportData.map(row => 
+        headers.map(h => {
+          const val = row[h];
+          // Escape quotes and wrap in quotes if contains semicolon
+          const escaped = String(val).replace(/"/g, '""');
+          return escaped.includes(';') || escaped.includes('\n') ? `"${escaped}"` : escaped;
+        }).join(';')
+      )
+    ];
+    
+    const csvContent = '\uFEFF' + csvRows.join('\n'); // BOM for Excel UTF-8
+    
+    res.setHeader('Content-Disposition', 'attachment; filename=zamowienia.csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.send(csvContent);
+  } catch (err) {
+    console.error('Export error:', err);
+    res.status(500).json({ error: 'Błąd eksportu' });
+  }
+});
+
 // ============ START SERVER ============
 
 initDatabase().then(() => {
