@@ -351,6 +351,11 @@ function AdminHeader() {
 export default function AdminLayout() {
   const navigate = useNavigate();
   const { user, isAdmin, isLoading } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    const cookie = document.cookie.split(';').find(c => c.trim().startsWith('sidebar:state='));
+    if (cookie) return cookie.split('=')[1].trim() === 'true';
+    return true;
+  });
 
   useEffect(() => {
     if (!isLoading && (!user || !isAdmin)) {
@@ -375,7 +380,7 @@ export default function AdminLayout() {
   if (!isAdmin) return null;
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <div className="min-h-screen flex w-full bg-background">
         <AdminSidebar />
         <div className="flex-1 flex flex-col min-h-screen">

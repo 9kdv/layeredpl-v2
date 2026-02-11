@@ -273,6 +273,8 @@ export const settingsApi = {
   getAll: () => request<Settings>('/admin/settings'),
   update: (data: Partial<Settings>) => request<{ success: boolean }>('/admin/settings', { method: 'PUT', body: data }),
   getPublic: () => request<Settings>('/settings/public'),
+  reset: () => request<{ success: boolean }>('/admin/settings/reset', { method: 'POST' }),
+  clearLogs: () => request<{ success: boolean }>('/admin/logs', { method: 'DELETE' }),
 };
 
 // ============ REPORTS ============

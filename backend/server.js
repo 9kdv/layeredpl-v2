@@ -1902,6 +1902,94 @@ app.get('/admin/logs', authenticate, requirePermission('logs.view'), async (req,
   }
 });
 
+// Clear all logs
+app.delete('/admin/logs', authenticate, requirePermission('settings.edit'), async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM activity_logs');
+    await logActivity(req.user.id, 'clear_logs', 'system', null, {}, req);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Clear logs error:', err);
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Logs export
+app.get('/admin/logs/export', authenticate, requirePermission('logs.export'), async (req, res) => {
+  const { format = 'csv' } = req.query;
+  try {
+    const [logs] = await pool.execute(`
+      SELECT al.*, u.email as user_email 
+      FROM activity_logs al
+      LEFT JOIN users u ON al.user_id = u.id
+      ORDER BY al.created_at DESC
+      LIMIT 10000
+    `);
+    
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=logs.json');
+      return res.json(logs);
+    }
+    
+    // CSV
+    const BOM = '\uFEFF';
+    const header = 'Data,Użytkownik,Akcja,Obiekt,ID obiektu,Szczegóły,IP\n';
+    const rows = logs.map(l => {
+      const details = l.details ? (typeof l.details === 'string' ? l.details : JSON.stringify(l.details)).replace(/"/g, '""') : '';
+      return `"${l.created_at}","${l.user_email || 'System'}","${l.action}","${l.entity_type || ''}","${l.entity_id || ''}","${details}","${l.ip_address || ''}"`;
+    }).join('\n');
+    
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=logs.csv');
+    res.send(BOM + header + rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Reset settings
+app.post('/admin/settings/reset', authenticate, requirePermission('settings.edit'), async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM settings');
+    await logActivity(req.user.id, 'reset_settings', 'settings', null, {}, req);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd serwera' });
+  }
+});
+
+// Public settings (for homepage reviews, shipping threshold, legal docs)
+app.get('/settings/public', async (req, res) => {
+  try {
+    const [settings] = await pool.execute('SELECT * FROM settings ORDER BY key_name');
+    const data = settings.reduce((acc, s) => {
+      acc[s.key_name] = s.value_json ? JSON.parse(s.value_json) : s.value_text;
+      return acc;
+    }, {});
+    
+    // Only expose public-safe settings
+    res.json({
+      reviews: data.reviews || null,
+      free_shipping_threshold: data.free_shipping_threshold || '200',
+      shipping_time: data.shipping_time || '24h',
+      legal_terms: data.legal_terms || null,
+      legal_privacy: data.legal_privacy || null,
+      legal_cookies: data.legal_cookies || null,
+      maintenance_mode: data.maintenance_mode || 'false',
+      maintenance_message: data.maintenance_message || '',
+      maintenance_allow_logged_in: data.maintenance_allow_logged_in || false,
+      stats_happy_customers: data.stats_happy_customers || 150,
+      stats_avg_rating: data.stats_avg_rating || 4.9,
+      stats_total_orders: data.stats_total_orders || 500,
+      use_real_stats: data.use_real_stats || false,
+    });
+  } catch (err) {
+    console.error('Public settings error:', err);
+    res.json({});
+  }
+});
+
 // ============ NOTIFICATIONS ============
 
 app.get('/admin/notifications', authenticate, async (req, res) => {

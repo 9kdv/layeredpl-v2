@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { pl } from 'date-fns/locale';
 import { 
   Plus, Search, Tag, Percent, Truck, DollarSign, 
-  MoreHorizontal, Edit2, Trash2, Copy, Check, X, Calendar
+  MoreHorizontal, Edit2, Trash2, Copy, Check, X, CalendarIcon, Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,7 +42,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { promoApi, PromoCode } from '@/lib/adminApi';
 
 const PROMO_TYPES = {
@@ -214,7 +223,7 @@ export default function PromotionsPage() {
                     <TableCell>
                       {promo.valid_until ? (
                         <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3 text-muted-foreground" />
+                          <CalendarIcon className="h-3 w-3 text-muted-foreground" />
                           <span className={isExpired ? 'text-destructive' : ''}>
                             {new Date(promo.valid_until).toLocaleDateString('pl-PL')}
                           </span>
@@ -458,22 +467,32 @@ function PromoCodeDialog({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Ważny od</Label>
-                <Input
-                  type="date"
-                  value={formData.valid_from?.split('T')[0] || ''}
-                  onChange={(e) => setFormData({ ...formData, valid_from: e.target.value || null })}
-                  className="mt-1"
-                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className={cn("w-full mt-1 justify-start text-left font-normal", !formData.valid_from && "text-muted-foreground")}>
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {formData.valid_from ? format(new Date(formData.valid_from), 'dd.MM.yyyy') : 'Wybierz'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarPicker mode="single" selected={formData.valid_from ? new Date(formData.valid_from) : undefined} onSelect={(d: Date | undefined) => setFormData({ ...formData, valid_from: d?.toISOString() || null })} initialFocus className="pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div>
                 <Label>Ważny do</Label>
-                <Input
-                  type="date"
-                  value={formData.valid_until?.split('T')[0] || ''}
-                  onChange={(e) => setFormData({ ...formData, valid_until: e.target.value || null })}
-                  className="mt-1"
-                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className={cn("w-full mt-1 justify-start text-left font-normal", !formData.valid_until && "text-muted-foreground")}>
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {formData.valid_until ? format(new Date(formData.valid_until), 'dd.MM.yyyy') : 'Wybierz'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarPicker mode="single" selected={formData.valid_until ? new Date(formData.valid_until) : undefined} onSelect={(d: Date | undefined) => setFormData({ ...formData, valid_until: d?.toISOString() || null })} initialFocus className="pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
