@@ -49,7 +49,7 @@ export default function HomePage() {
         api.getFeaturedProducts().catch(() => []),
         api.getProducts().catch(() => []),
         api.getPublicStats().catch(() => null),
-        fetch(`${import.meta.env.PROD ? '/api' : 'http://192.168.0.104:3001'}/settings/public`).then(r => r.json()).catch(() => ({})),
+        fetch(`${import.meta.env.PROD ? '/api' : 'http://localhost:3001'}/settings/public`).then(r => r.json()).catch(() => ({})),
       ]);
 
       if (featured.length >= 4) {

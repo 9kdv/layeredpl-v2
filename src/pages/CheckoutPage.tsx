@@ -357,8 +357,26 @@ export default function CheckoutPage() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Calculate shipping cost
-  const baseShippingCost = deliveryMethod === 'inpost' ? 12.99 : (totalPrice >= 200 ? 0 : 15.99);
+  // Dynamic shipping settings
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState(200);
+  const [autoShippingApplied, setAutoShippingApplied] = useState(false);
+
+  useEffect(() => {
+    fetch(`${import.meta.env.PROD ? '/api' : 'http://localhost:3001'}/settings/public`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.free_shipping_threshold) {
+          setFreeShippingThreshold(parseFloat(data.free_shipping_threshold) || 200);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Calculate shipping cost - auto-promotion: free shipping above threshold
+  const courierBase = 15.99;
+  const inpostBase = 12.99;
+  const autoFreeShipping = deliveryMethod === 'address' && totalPrice >= freeShippingThreshold;
+  const baseShippingCost = deliveryMethod === 'inpost' ? inpostBase : (autoFreeShipping ? 0 : courierBase);
   const shippingCost = promoType === 'free_shipping' ? 0 : baseShippingCost;
   const finalTotal = totalPrice - promoDiscount + shippingCost;
 
@@ -605,7 +623,7 @@ export default function CheckoutPage() {
                           <span className="font-medium">Dostawa kurierem</span>
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {totalPrice >= 200 ? 'Darmowa dostawa' : '15.99 zł'} • 1-3 dni robocze
+                          {totalPrice >= freeShippingThreshold ? `Darmowa dostawa (od ${freeShippingThreshold} zł)` : `${courierBase.toFixed(2)} zł`} • 1-3 dni robocze
                         </p>
                       </div>
                     </label>
