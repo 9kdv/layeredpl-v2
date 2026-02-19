@@ -35,6 +35,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -58,6 +68,8 @@ export default function ProductsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -154,21 +166,43 @@ export default function ProductsPage() {
       setShowCustomization(false);
     }
     setNewImages([]);
+    setHasUnsavedChanges(false);
     setIsDialogOpen(true);
+  };
+
+  const handleDialogClose = () => {
+    if (hasUnsavedChanges) {
+      setShowUnsavedWarning(true);
+    } else {
+      setIsDialogOpen(false);
+    }
+  };
+
+  const handleFormChange = (key: string, value: any) => {
+    setFormData(prev => ({ ...prev, [key]: value }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleCustomizationChange = (c: ProductCustomization | null) => {
+    setCustomization(c);
+    setHasUnsavedChanges(true);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setNewImages(prev => [...prev, ...Array.from(e.target.files!)]);
+      setHasUnsavedChanges(true);
     }
   };
 
   const removeExistingImage = (index: number) => {
     setExistingImages(prev => prev.filter((_, i) => i !== index));
+    setHasUnsavedChanges(true);
   };
 
   const removeNewImage = (index: number) => {
     setNewImages(prev => prev.filter((_, i) => i !== index));
+    setHasUnsavedChanges(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,6 +238,7 @@ export default function ProductsPage() {
         await api.createProduct(formDataObj);
         toast.success('Produkt dodany');
       }
+      setHasUnsavedChanges(false);
       setIsDialogOpen(false);
       loadData();
     } catch (error) {
@@ -240,6 +275,7 @@ export default function ProductsPage() {
     setCustomization(product.customization || null);
     setShowCustomization(!!product.customization);
     setNewImages([]);
+    setHasUnsavedChanges(true);
     setIsDialogOpen(true);
   };
 
@@ -309,7 +345,6 @@ export default function ProductsPage() {
                 </div>
               )}
               
-              {/* Overlay actions */}
               <div className="absolute inset-0 bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 <Button size="icon" variant="secondary" onClick={() => openDialog(product)}>
                   <Pencil className="h-4 w-4" />
@@ -322,7 +357,6 @@ export default function ProductsPage() {
                 </Button>
               </div>
 
-              {/* Badges */}
               <div className="absolute top-2 left-2 flex gap-1">
                 {!!product.featured && (
                   <Badge variant="outline" className="bg-primary/80">Wyróżniony</Badge>
@@ -360,8 +394,17 @@ export default function ProductsPage() {
       </div>
 
       {/* Product Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          handleDialogClose();
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => {
+          if (hasUnsavedChanges) {
+            e.preventDefault();
+            setShowUnsavedWarning(true);
+          }
+        }}>
           <DialogHeader>
             <DialogTitle>
               {editingProduct ? 'Edytuj produkt' : 'Dodaj nowy produkt'}
@@ -383,7 +426,7 @@ export default function ProductsPage() {
                     <Input
                       id="name"
                       value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => handleFormChange('name', e.target.value)}
                       required
                     />
                   </div>
@@ -395,7 +438,7 @@ export default function ProductsPage() {
                       type="number"
                       step="0.01"
                       value={formData.price}
-                      onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                      onChange={(e) => handleFormChange('price', e.target.value)}
                       required
                     />
                   </div>
@@ -407,7 +450,7 @@ export default function ProductsPage() {
                     <Input
                       id="category"
                       value={formData.category}
-                      onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                      onChange={(e) => handleFormChange('category', e.target.value)}
                       placeholder="np. Organizery, Dekoracje"
                     />
                   </div>
@@ -417,7 +460,7 @@ export default function ProductsPage() {
                     <Select
                       value={formData.availability}
                       onValueChange={(value: 'available' | 'low_stock' | 'unavailable') => 
-                        setFormData(prev => ({ ...prev, availability: value }))
+                        handleFormChange('availability', value)
                       }
                     >
                       <SelectTrigger>
@@ -437,7 +480,7 @@ export default function ProductsPage() {
                   <Textarea
                     id="description"
                     value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) => handleFormChange('description', e.target.value)}
                     rows={2}
                   />
                 </div>
@@ -447,7 +490,7 @@ export default function ProductsPage() {
                   <Textarea
                     id="long_description"
                     value={formData.long_description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, long_description: e.target.value }))}
+                    onChange={(e) => handleFormChange('long_description', e.target.value)}
                     rows={4}
                   />
                 </div>
@@ -456,14 +499,13 @@ export default function ProductsPage() {
                   <Switch
                     id="featured"
                     checked={formData.featured}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, featured: checked }))}
+                    onCheckedChange={(checked) => handleFormChange('featured', checked)}
                   />
                   <Label htmlFor="featured">Wyróżniony produkt (pokazuj na stronie głównej)</Label>
                 </div>
               </TabsContent>
 
               <TabsContent value="images" className="space-y-4 mt-4">
-                {/* Existing Images */}
                 {existingImages.length > 0 && (
                   <div className="space-y-2">
                     <Label>Obecne zdjęcia</Label>
@@ -488,7 +530,6 @@ export default function ProductsPage() {
                   </div>
                 )}
 
-                {/* New Images */}
                 {newImages.length > 0 && (
                   <div className="space-y-2">
                     <Label>Nowe zdjęcia</Label>
@@ -513,7 +554,6 @@ export default function ProductsPage() {
                   </div>
                 )}
 
-                {/* Upload Button */}
                 <div
                   onClick={() => fileInputRef.current?.click()}
                   className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
@@ -540,6 +580,7 @@ export default function ProductsPage() {
                     onCheckedChange={(checked) => {
                       setShowCustomization(checked);
                       if (!checked) setCustomization(null);
+                      setHasUnsavedChanges(true);
                     }}
                   />
                   <Label htmlFor="hasCustomization">Produkt z personalizacją</Label>
@@ -548,14 +589,14 @@ export default function ProductsPage() {
                 {showCustomization && (
                   <CustomizationEditor
                     value={customization}
-                    onChange={setCustomization}
+                    onChange={handleCustomizationChange}
                   />
                 )}
               </TabsContent>
             </Tabs>
 
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <Button type="button" variant="outline" onClick={handleDialogClose}>
                 Anuluj
               </Button>
               <Button type="submit" disabled={isSaving}>
@@ -572,6 +613,28 @@ export default function ProductsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Unsaved changes warning */}
+      <AlertDialog open={showUnsavedWarning} onOpenChange={setShowUnsavedWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Niezapisane zmiany</AlertDialogTitle>
+            <AlertDialogDescription>
+              Masz niezapisane zmiany w produkcie. Czy na pewno chcesz zamknąć bez zapisywania?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Wróć do edycji</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setShowUnsavedWarning(false);
+              setHasUnsavedChanges(false);
+              setIsDialogOpen(false);
+            }} className="bg-destructive hover:bg-destructive/90">
+              Zamknij bez zapisywania
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

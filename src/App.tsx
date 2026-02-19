@@ -5,11 +5,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { CartProvider } from "@/contexts/CartContext";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/CartDrawer";
 import { CookieConsent } from "@/components/CookieConsent";
+import { Wrench } from "lucide-react";
 
 import HomePage from "./pages/HomePage";
 import ShopPage from "./pages/ShopPage";
@@ -47,9 +48,32 @@ import favicon from "/favicon.svg";
 
 const queryClient = new QueryClient();
 
+const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3001';
+
+// Maintenance mode overlay
+function MaintenancePage({ message }: { message?: string }) {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center max-w-md px-6">
+        <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <Wrench className="w-8 h-8 text-primary" />
+        </div>
+        <h1 className="text-3xl font-bold mb-4">Przerwa techniczna</h1>
+        <p className="text-muted-foreground text-lg mb-6">
+          {message || 'Strona jest w trakcie konserwacji. Wrócimy wkrótce!'}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Przepraszamy za utrudnienia.
+        </p>
+      </div>
+    </main>
+  );
+}
+
 // PageWrapper with delayed route rendering
 const PageWrapper = () => {
   const location = useLocation();
+  const { user, isAdmin } = useAuth();
 
   const [fadeOpacity, setFadeOpacity] = useState(0);
   const [logoStage, setLogoStage] = useState<
@@ -57,6 +81,24 @@ const PageWrapper = () => {
   >("done");
 
   const [currentLocation, setCurrentLocation] = useState(location);
+  
+  // Maintenance mode
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState('');
+  const [maintenanceAllowLoggedIn, setMaintenanceAllowLoggedIn] = useState(false);
+  const [maintenanceChecked, setMaintenanceChecked] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/settings/public`)
+      .then(r => r.json())
+      .then(data => {
+        setMaintenanceMode(data.maintenance_mode === true || data.maintenance_mode === 'true');
+        setMaintenanceMessage(data.maintenance_message || '');
+        setMaintenanceAllowLoggedIn(data.maintenance_allow_logged_in === true || data.maintenance_allow_logged_in === 'true');
+      })
+      .catch(() => {})
+      .finally(() => setMaintenanceChecked(true));
+  }, []);
 
   // Check if current route is admin (no transition for admin)
   const isAdminRoute = location.pathname.startsWith('/admin');
@@ -92,6 +134,23 @@ const PageWrapper = () => {
   }, [location, currentLocation, isAdminRoute]);
 
   const showNavbar = !currentLocation.pathname.startsWith('/admin');
+
+  // Show maintenance page for non-admin, non-login routes
+  if (maintenanceChecked && maintenanceMode && !isAdminRoute) {
+    const isLoginRoute = currentLocation.pathname === '/login';
+    const isAccountRoute = currentLocation.pathname === '/konto' || currentLocation.pathname.startsWith('/zamowienie/');
+    
+    // Allow admin users always
+    if (isAdmin) {
+      // Admin can access everything - fall through
+    } else if (isLoginRoute) {
+      // Always allow login page
+    } else if (maintenanceAllowLoggedIn && user && isAccountRoute) {
+      // Allow logged-in users to see their account/orders
+    } else {
+      return <MaintenancePage message={maintenanceMessage} />;
+    }
+  }
 
   return (
     <>

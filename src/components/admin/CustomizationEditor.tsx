@@ -17,7 +17,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -27,12 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
 import {
   CustomizationOption,
   CustomizationOptionType,
@@ -80,7 +73,6 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
       priceType: 'add',
     };
 
-    // Initialize type-specific defaults
     switch (type) {
       case 'color':
         newOption.colorOptions = [];
@@ -220,14 +212,14 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
                 placeholder="+zł"
                 className="w-20 h-8"
               />
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeColor(index)}>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeColor(index)}>
                 <Trash2 className="w-4 h-4 text-destructive" />
               </Button>
             </div>
           ))}
         </div>
         
-        <Button variant="outline" size="sm" onClick={addColor}>
+        <Button type="button" variant="outline" size="sm" onClick={addColor}>
           <Plus className="w-4 h-4 mr-2" />
           Dodaj kolor
         </Button>
@@ -284,12 +276,12 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
               placeholder="+zł"
               className="w-20 h-8"
             />
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeMaterial(index)}>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeMaterial(index)}>
               <Trash2 className="w-4 h-4 text-destructive" />
             </Button>
           </div>
         ))}
-        <Button variant="outline" size="sm" onClick={addMaterial}>
+        <Button type="button" variant="outline" size="sm" onClick={addMaterial}>
           <Plus className="w-4 h-4 mr-2" />
           Dodaj materiał
         </Button>
@@ -339,12 +331,12 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
               placeholder="+zł"
               className="w-20 h-8"
             />
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeSize(index)}>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeSize(index)}>
               <Trash2 className="w-4 h-4 text-destructive" />
             </Button>
           </div>
         ))}
-        <Button variant="outline" size="sm" onClick={addSize}>
+        <Button type="button" variant="outline" size="sm" onClick={addSize}>
           <Plus className="w-4 h-4 mr-2" />
           Dodaj rozmiar
         </Button>
@@ -399,12 +391,12 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
               placeholder="+zł"
               className="w-20 h-8"
             />
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeStrength(index)}>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeStrength(index)}>
               <Trash2 className="w-4 h-4 text-destructive" />
             </Button>
           </div>
         ))}
-        <Button variant="outline" size="sm" onClick={addStrength}>
+        <Button type="button" variant="outline" size="sm" onClick={addStrength}>
           <Plus className="w-4 h-4 mr-2" />
           Dodaj wytrzymałość
         </Button>
@@ -461,7 +453,7 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
             {fonts.map((font, index) => (
               <span key={index} className="px-2 py-1 bg-muted rounded text-sm flex items-center gap-1">
                 {font}
-                <button onClick={() => updateOption(option.id, { fontOptions: fonts.filter((_, i) => i !== index) })}>
+                <button type="button" onClick={() => updateOption(option.id, { fontOptions: fonts.filter((_, i) => i !== index) })}>
                   <Trash2 className="w-3 h-3 text-destructive" />
                 </button>
               </span>
@@ -471,9 +463,12 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
             <Input
               placeholder="Nazwa czcionki"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.currentTarget.value) {
-                  updateOption(option.id, { fontOptions: [...fonts, e.currentTarget.value] });
-                  e.currentTarget.value = '';
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (e.currentTarget.value) {
+                    updateOption(option.id, { fontOptions: [...fonts, e.currentTarget.value] });
+                    e.currentTarget.value = '';
+                  }
                 }
               }}
             />
@@ -608,12 +603,12 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
               placeholder="+zł"
               className="w-20 h-8"
             />
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeSelectOption(index)}>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeSelectOption(index)}>
               <Trash2 className="w-4 h-4 text-destructive" />
             </Button>
           </div>
         ))}
-        <Button variant="outline" size="sm" onClick={addSelectOption}>
+        <Button type="button" variant="outline" size="sm" onClick={addSelectOption}>
           <Plus className="w-4 h-4 mr-2" />
           Dodaj opcję
         </Button>
@@ -702,16 +697,16 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
                 {option.required && <span className="text-xs text-destructive ml-2">*wymagane</span>}
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); moveOption(index, 'up'); }}>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); moveOption(index, 'up'); }}>
                   <ChevronUp className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); moveOption(index, 'down'); }}>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); moveOption(index, 'down'); }}>
                   <ChevronDown className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); duplicateOption(option); }}>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); duplicateOption(option); }}>
                   <Copy className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); removeOption(option.id); }}>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); removeOption(option.id); }}>
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </div>
@@ -783,6 +778,7 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
         <div className="flex flex-wrap gap-2">
           {OPTION_TYPES.map(({ value, label, icon }) => (
             <Button
+              type="button"
               key={value}
               variant="outline"
               size="sm"
@@ -800,6 +796,7 @@ export function CustomizationEditor({ value, onChange }: CustomizationEditorProp
       {customization.options.length > 0 && (
         <div className="pt-4 border-t border-border">
           <Button 
+            type="button"
             variant="destructive" 
             size="sm"
             onClick={() => onChange(null)}
