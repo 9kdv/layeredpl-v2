@@ -1,5 +1,5 @@
 // Use /api for production (nginx proxy), localhost for development
-const API_BASE = import.meta.env.PROD ? '/api' : 'http://192.168.0.104:3001';
+const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3001';
 
 import { 
   ProductCustomization, 

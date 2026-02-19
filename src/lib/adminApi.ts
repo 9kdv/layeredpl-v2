@@ -1,5 +1,5 @@
 // Admin API methods for all modules
-const API_BASE = import.meta.env.PROD ? '/api' : 'http://192.168.0.104:3001';
+const API_BASE = import.meta.env.PROD ? '/api' : 'http://localhost:3001';
 
 function getToken(): string | null {
   return localStorage.getItem('auth_token');
